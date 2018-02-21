@@ -1,4 +1,7 @@
-# cs224n-win18-squad
-Code for the Default Final Project (SQuAD) for [CS224n](http://web.stanford.edu/class/cs224n/), Winter 2018
+# Word Games (Part Deux)
 
-Note: this code is adapted in part from the [Neural Language Correction](https://github.com/stanfordmlgroup/nlc/) code by the Stanford Machine Learning Group.
+### Experimental Results
+    - baseline
+        - F1 = 44.0, EM = 34.7
+    - mitchell-predict-nonempty
+        - F1 = 49.4, EM = 38.1

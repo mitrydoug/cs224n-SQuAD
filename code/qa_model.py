@@ -17,6 +17,7 @@
 from __future__ import absolute_import
 from __future__ import division
 
+import collections
 import time
 import logging
 import os
@@ -38,7 +39,7 @@ logging.basicConfig(level=logging.INFO)
 class QAModel(object):
     """Top-level Question Answering module"""
 
-    def __init__(self, FLAGS, id2word, word2id, emb_matrix):
+    def __init__(self, FLAGS, id2word, word2id, emb_matrix, train_ans_path):
         """
         Initializes the QA model.
 
@@ -52,6 +53,11 @@ class QAModel(object):
         self.FLAGS = FLAGS
         self.id2word = id2word
         self.word2id = word2id
+
+        with open(train_ans_path, 'r') as f:
+            self.train_ans_len_dist = collections.Counter(
+                map((lambda t: int(t[1])-int(t[0])+1),
+                    (line.strip().split() for line in f)))
 
         # Add all parts of the graph
         with tf.variable_scope("QAModel", initializer=tf.contrib.layers.variance_scaling_initializer(factor=1.0, uniform=True)):
@@ -293,12 +299,29 @@ class QAModel(object):
           start_pos, end_pos: both numpy arrays shape (batch_size).
             The most likely start and end positions for each example in the batch.
         """
+
+        def get_ans_len_prob(start, end):
+            if end < start:
+                return 0
+            else:
+                count = self.train_ans_len_dist[end-start+1]
+                total = sum(self.train_ans_len_dist.values())
+                # "laplace smoothing"
+                return (((count+1.0)/(total+self.FLAGS.context_len))
+                        ** self.FLAGS.ans_len_dist_power)
+
         # Get start_dist and end_dist, both shape (batch_size, context_len)
         start_dist, end_dist = self.get_prob_dists(session, batch)
 
         # Take argmax to get start_pos and end_post, both shape (batch_size)
-        start_pos = np.argmax(start_dist, axis=1)
-        end_pos = np.argmax(end_dist, axis=1)
+        ans_len_dist = np.array([[get_ans_len_prob(s, e)
+                for e in range(self.FLAGS.context_len)]
+                for s in range(self.FLAGS.context_len)])
+        range_dist = np.array([(np.outer(S, E) * ans_len_dist).flatten()
+                for S, E in zip(start_dist, end_dist)])
+        locations = np.argmax(range_dist, axis=1)
+        start_pos = locations // self.FLAGS.context_len
+        end_pos = locations % self.FLAGS.context_len
 
         return start_pos, end_pos
 

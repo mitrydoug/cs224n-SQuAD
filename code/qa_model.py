@@ -149,7 +149,7 @@ class QAModel(object):
         # Apply fully connected layer to each blended representation
         # Note, blended_reps_final corresponds to b' in the handout
         # Note, tf.contrib.layers.fully_connected applies a ReLU non-linarity here by default
-        # blended_reps_final is shape (batch_size, context_len, hidden_size)
+        # blended_reps_final is shape (batch_size, context_len, postatt_hidden_size)
         with vs.variable_scope("ModellingLayer"):
             model_encoder = RNNEncoder(self.FLAGS.postatt_hidden_size, self.keep_prob)
             blended_reps_final = model_encoder.build_graph(blended_reps, self.context_mask)

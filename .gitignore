@@ -2,4 +2,3 @@ data/
 experiments/
 .idea/
 *.pyc
-requirements.txt

@@ -174,21 +174,11 @@ class BasicAttn(object):
             output = tf.nn.dropout(output, self.keep_prob)
 
             return attn_dist, output
-
-
+            
 
 class BiDAFAttn(object):
-    """Module for basic attention.
-
-    Note: in this module we use the terminology of "context" and "query" (see lectures).
-    In the terminology of "X attends to Y", "context attend to query".
-
-    In the baseline model, the context are the context hidden states
-    and the query are the question hidden states.
-
-    We choose to use general terminology of context and query in this module
-    (rather than context and question) to avoid confusion if you reuse this
-    module with other inputs.
+    """
+    Module for BiDAF
     """
 
     def __init__(self, keep_prob, word_vec_size, dummy_var=None):
@@ -220,23 +210,22 @@ class BiDAFAttn(object):
             This is the attention output; the weighted sum of the query
             (using the attention distribution as weights).
         """
-        with vs.variable_scope('BiDAFAttn'):
+        with vs.variable_scope('BiDAFAttn'): 
             
 
             expanded_context = tf.expand_dims(context, axis=2) # (batch_size, context_size, 1, word_vec_size)
             expanded_query = tf.expand_dims(query, axis=1) # (batch_size, 1, query_size, word_vec_size)
             multiplied = tf.multiply(expanded_context, expanded_query) # (batch_size, context_size, query_size, word_vec_size)
-            
-            # make [c; q; c * q]
-            tiled_context = tf.tile(expanded_context, (1, 1, tf.shape(query)[1], 1)) 
-            tiled_query = tf.tile(expanded_query, (1, tf.shape(context)[1], 1, 1))
-            sim_input_tensor = tf.concat((tiled_context, tiled_query, multiplied), axis=3) # (batch_size, context_size, query_size, 3*word_vec_size)
-
-            
+             
             # make similarity matrix
-            similarity_mat = tf.contrib.layers.fully_connected(sim_input_tensor, num_outputs=1, activation_fn=None, biases_initializer=None)
-            similarity_mat = tf.squeeze(similarity_mat, axis=(3)) # (batch_size, context_size, query_size)
-
+            similarity_mult= tf.squeeze(tf.contrib.layers.fully_connected(multiplied,
+                    num_outputs=1, activation_fn=None, biases_initializer=None), axis=(3)) #(batch_size, context_size, query_size)
+            similarity_context = tf.contrib.layers.fully_connected(context,
+                    num_outputs=1,activation_fn=None, biases_initializer=None) # (batch_size, context_size, 1)
+            similarity_query = tf.contrib.layers.fully_connected(query, 
+                    num_outputs=1, activation_fn=None, biases_initializer=None) #(batch_size, query_size, 1)
+            similarity_mat = similarity_mult + similarity_context + tf.transpose(similarity_query,perm=(0, 2, 1)) 
+            
             _, alpha_distribution = masked_softmax(similarity_mat, tf.expand_dims(query_mask, 1), 2) # (batch_size, context_size, query_size)
             C2Q = tf.matmul(alpha_distribution, query) # (batch_size, context_size, word_vec_size)
 
@@ -249,8 +238,6 @@ class BiDAFAttn(object):
             return None, tf.concat((C2Q, Q2C), axis=2)
 
             #TODO apply dropout to Q2C and C2Q? 
-            #TODO make context_size and query_size variables
-            
 
 def masked_softmax(logits, mask, dim):
     """

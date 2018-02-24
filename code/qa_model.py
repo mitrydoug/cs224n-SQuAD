@@ -30,7 +30,7 @@ from tensorflow.python.ops import embedding_ops
 from evaluate import exact_match_score, f1_score
 from data_batcher import get_batch_generator
 from pretty_print import print_example
-from modules import RNNEncoder, SimpleSoftmaxLayer, BasicAttn
+from modules import RNNEncoder, SimpleSoftmaxLayer, BasicAttn, BiDAFAttn
 
 logging.basicConfig(level=logging.INFO)
 
@@ -137,9 +137,9 @@ class QAModel(object):
         question_hiddens = encoder.build_graph(self.qn_embs, self.qn_mask)
 
         # Use context hidden states to attend to question hidden states
-        attn_layer = BasicAttn(self.keep_prob, self.FLAGS.preatt_hidden_size*2, self.FLAGS.preatt_hidden_size*2)
+        attn_layer = BiDAFAttn(self.keep_prob, self.FLAGS.preatt_hidden_size*2, self.FLAGS.preatt_hidden_size*2)
         # attn_output is shape (batch_size, context_len, preatt_hidden_size*2)
-        _, attn_output = attn_layer.build_graph(question_hiddens, self.qn_mask, context_hiddens)
+        _, attn_output = attn_layer.build_graph(question_hiddens, self.qn_mask, context_hiddens, self.context_mask)
 
         # Concat attn_output to context_hiddens to get blended_reps
         # (batch_size, context_len, preatt_hidden_size*4)

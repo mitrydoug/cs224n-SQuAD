@@ -224,7 +224,7 @@ class BiDAFAttn(object):
             
 
             expanded_context = tf.expand_dims(context, axis=2) # (batch_size, context_size, 1, word_vec_size)
-            expanded_query = tf.exand_dims(query, axis=1) # (batch_size, 1, query_size, word_vec_size)
+            expanded_query = tf.expand_dims(query, axis=1) # (batch_size, 1, query_size, word_vec_size)
             multiplied = tf.multiply(expanded_context, expanded_query) # (batch_size, context_size, query_size, word_vec_size)
             
             # make [c; q; c * q]
@@ -238,11 +238,11 @@ class BiDAFAttn(object):
             similarity_mat = tf.squeeze(similarity_mat, axis=(3)) # (batch_size, context_size, query_size)
 
             _, alpha_distribution = masked_softmax(similarity_mat, tf.expand_dims(query_mask, 1), 2) # (batch_size, context_size, query_size)
-            C2Q = tf.matmul(alpha_distribution, tf.transpose(query,perm=(0, 2, 1))) # (batch_size, context_size, word_vec_size)
+            C2Q = tf.matmul(alpha_distribution, query) # (batch_size, context_size, word_vec_size)
 
             max_sim = tf.reduce_max(similarity_mat, axis=2) # (batch_size, context_size)
-            _, beta_distribution = masked_softmax(max_sim, context_size, 1) # (batch_size, context_size)
-            expanded_beta = tf.expand_dims(beta, axis=1) # (batch_size, 1, context_size)
+            _, beta_distribution = masked_softmax(max_sim, context_mask, 1) # (batch_size, context_size)
+            expanded_beta = tf.expand_dims(beta_distribution, axis=1) # (batch_size, 1, context_size)
             Q2C = tf.matmul(expanded_beta, context) # (batch_size, 1, word_vec_size)
             Q2C = tf.tile(Q2C, (1, tf.shape(context)[1], 1)) #(batch_size, context_size, word_vec_size) 
  

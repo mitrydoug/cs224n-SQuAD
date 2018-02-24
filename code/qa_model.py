@@ -163,9 +163,25 @@ class QAModel(object):
             model_start_encoder2 = LSTMEncoder(self.FLAGS.postatt_start_hidden_size, self.keep_prob)
             model_start_reps = model_start_encoder2.build_graph(model_start_reps_0, self.context_mask)
 
+        # teacher-forcing. We are going to add a channel to model_start_reps which simply holds
+        # a 1. in the position of the start location. The dimension of gold_start_position is
+        # (batch_size, context_len, 1)
+        gold_start_pos = tf.scatter_nd(
+                # indices
+                tf.concat([tf.expand_dims(tf.range(tf.shape(model_start_reps)[0]), axis=1),
+                           self.ans_span[:,:1]], axis=1),
+                # updates
+                tf.ones(tf.shape(model_start_reps)[:1]),
+                # shape
+                tf.shape(model_start_reps)[:-1])
+        # model_start_reps_aug contains an extra channel in the hidden states which is 1.0 for the
+        # correct start location.
+        model_start_reps_aug = tf.concat(
+                [model_start_reps, tf.expand_dims(gold_start_pos, axis=2)], axis=2)
+
         with vs.variable_scope("ModelEnd"):
             model_end_encoder = LSTMEncoder(self.FLAGS.postatt_end_hidden_size, self.keep_prob)
-            model_end_reps = model_end_encoder.build_graph(model_start_reps, self.context_mask)
+            model_end_reps = model_end_encoder.build_graph(model_start_reps_aug, self.context_mask)
 
         # Use softmax layer to compute probability distribution for start location
         # Note this produces self.logits_start and self.probdist_start, both of which have shape (batch_size, context_len)

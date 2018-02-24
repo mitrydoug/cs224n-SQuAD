@@ -146,21 +146,25 @@ class QAModel(object):
         # Note, blended_reps_final corresponds to b' in the handout
         # Note, tf.contrib.layers.fully_connected applies a ReLU non-linarity here by default
         # blended_reps_final is shape (batch_size, context_len, hidden_size)
-        with vs.variable_scope("ModellingLayer"):
-            model_encoder = RNNEncoder(self.FLAGS.hidden_size, self.keep_prob)
-            blended_reps_final = model_encoder.build_graph(blended_reps, self.context_mask)
+        with vs.variable_scope("ModelStart"):
+            model_start_encoder = RNNEncoder(self.FLAGS.hidden_size, self.keep_prob)
+            model_start_reps = model_start_encoder.build_graph(blended_reps, self.context_mask)
+
+        with vs.variable_scope("ModelEnd"):
+            model_end_encoder = RNNEncoder(self.FLAGS.hidden_size, self.keep_prob)
+            model_end_reps = model_end_encoder.build_graph(model_start_reps, self.context_mask)
 
         # Use softmax layer to compute probability distribution for start location
         # Note this produces self.logits_start and self.probdist_start, both of which have shape (batch_size, context_len)
         with vs.variable_scope("StartDist"):
             softmax_layer_start = SimpleSoftmaxLayer()
-            self.logits_start, self.probdist_start = softmax_layer_start.build_graph(blended_reps_final, self.context_mask)
+            self.logits_start, self.probdist_start = softmax_layer_start.build_graph(model_start_reps, self.context_mask)
 
         # Use softmax layer to compute probability distribution for end location
         # Note this produces self.logits_end and self.probdist_end, both of which have shape (batch_size, context_len)
         with vs.variable_scope("EndDist"):
             softmax_layer_end = SimpleSoftmaxLayer()
-            self.logits_end, self.probdist_end = softmax_layer_end.build_graph(blended_reps_final, self.context_mask)
+            self.logits_end, self.probdist_end = softmax_layer_end.build_graph(model_end_reps, self.context_mask)
 
 
     def add_loss(self):

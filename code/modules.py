@@ -176,6 +176,82 @@ class BasicAttn(object):
             return attn_dist, output
 
 
+
+class BiDAFAttn(object):
+    """Module for basic attention.
+
+    Note: in this module we use the terminology of "context" and "query" (see lectures).
+    In the terminology of "X attends to Y", "context attend to query".
+
+    In the baseline model, the context are the context hidden states
+    and the query are the question hidden states.
+
+    We choose to use general terminology of context and query in this module
+    (rather than context and question) to avoid confusion if you reuse this
+    module with other inputs.
+    """
+
+    def __init__(self, keep_prob, word_vec_size, dummy_var=None):
+        """
+        Inputs:
+          keep_prob: tensor containing a single scalar that is the keep probability (for dropout)
+          word_vec_size: size of the context vectors. int
+        """
+        assert word_vec_size == dummy_var or dummy_var is None
+        self.keep_prob = keep_prob
+        self.word_vec_size = word_vec_size
+
+    def build_graph(self, query, query_mask, context, context_mask):
+        """
+        Keys attend to query.
+        For each context, return an attention distribution and an attention output vector.
+
+        Inputs:
+          query: Tensor shape (batch_size, query_size, word_vec_size).
+          query_mask: Tensor shape (batch_size, query_size).
+            1s where there's real input, 0s where there's padding
+          context: Tensor shape (batch_size, context_size, word_vec_size)
+
+        Outputs:
+          attn_dist: Tensor shape (batch_size, context_size, query_size).
+            For each context, the distribution should sum to 1,
+            and should be 0 in the query locations that correspond to padding.
+          output: Tensor shape (batch_size, context_size, hidden_size).
+            This is the attention output; the weighted sum of the query
+            (using the attention distribution as weights).
+        """
+        with vs.variable_scope('BiDAFAttn'):
+            
+
+            expanded_context = tf.expand_dims(context, axis=2) # (batch_size, context_size, 1, word_vec_size)
+            expanded_query = tf.exand_dims(query, axis=1) # (batch_size, 1, query_size, word_vec_size)
+            multiplied = tf.multiply(expanded_context, expanded_query) # (batch_size, context_size, query_size, word_vec_size)
+            
+            # make [c; q; c * q]
+            tiled_context = tf.tile(expanded_context, (1, 1, tf.shape(query)[1], 1)) 
+            tiled_query = tf.tile(expanded_query, (1, tf.shape(context)[1], 1, 1))
+            sim_input_tensor = tf.concat((tiled_context, tiled_query, multiplied), axis=3) # (batch_size, context_size, query_size, 3*word_vec_size)
+
+            
+            # make similarity matrix
+            similarity_mat = tf.contrib.layers.fully_connected(sim_input_tensor, num_outputs=1, activation_fn=None, biases_initializer=None)
+            similarity_mat = tf.squeeze(similarity_mat, axis=(3)) # (batch_size, context_size, query_size)
+
+            _, alpha_distribution = masked_softmax(similarity_mat, tf.expand_dims(query_mask, 1), 2) # (batch_size, context_size, query_size)
+            C2Q = tf.matmul(alpha_distribution, tf.transpose(query,perm=(0, 2, 1))) # (batch_size, context_size, word_vec_size)
+
+            max_sim = tf.reduce_max(similarity_mat, axis=2) # (batch_size, context_size)
+            _, beta_distribution = masked_softmax(max_sim, context_size, 1) # (batch_size, context_size)
+            expanded_beta = tf.expand_dims(beta, axis=1) # (batch_size, 1, context_size)
+            Q2C = tf.matmul(expanded_beta, context) # (batch_size, 1, word_vec_size)
+            Q2C = tf.tile(Q2C, (1, tf.shape(context)[1], 1)) #(batch_size, context_size, word_vec_size) 
+ 
+            return None, tf.concat((C2Q, Q2C), axis=2)
+
+            #TODO apply dropout to Q2C and C2Q? 
+            #TODO make context_size and query_size variables
+            
+
 def masked_softmax(logits, mask, dim):
     """
     Takes masked softmax over given dimension of logits.

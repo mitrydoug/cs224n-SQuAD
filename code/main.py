@@ -47,6 +47,7 @@ tf.app.flags.DEFINE_integer("num_epochs", 0, "Number of epochs to train. 0 means
 tf.app.flags.DEFINE_float("learning_rate", 0.001, "Learning rate.")
 tf.app.flags.DEFINE_float("max_gradient_norm", 5.0, "Clip gradients to this norm.")
 tf.app.flags.DEFINE_float("dropout", 0.15, "Fraction of units randomly dropped on non-recurrent connections.")
+tf.app.flags.DEFINE_float("ans_len_dist_power", 1.0, "Power applied to answer len distribution post DL model")
 tf.app.flags.DEFINE_integer("batch_size", 100, "Batch size to use")
 tf.app.flags.DEFINE_integer("preatt_hidden_size", 200, "Size of the pre-attension layer hidden states")
 tf.app.flags.DEFINE_integer("postatt_hidden_size", 200, "Size of the post-attension layer hidden states")
@@ -134,7 +135,7 @@ def main(unused_argv):
     dev_ans_path = os.path.join(FLAGS.data_dir, "dev.span")
 
     # Initialize model
-    qa_model = QAModel(FLAGS, id2word, word2id, emb_matrix)
+    qa_model = QAModel(FLAGS, id2word, word2id, emb_matrix, train_ans_path)
 
     # Some GPU settings
     config=tf.ConfigProto()

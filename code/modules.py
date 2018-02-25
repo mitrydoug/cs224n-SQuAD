@@ -212,25 +212,31 @@ class BiDAFAttn(object):
         """
         with vs.variable_scope('BiDAFAttn'): 
             
-
+            #Make similarity matrix
             ws = tf.get_variable('ws', shape=(self.word_vec_size), initializer=tf.contrib.layers.xavier_initializer())
             ws_odot_context = tf.multiply(context, ws) # (batch_size, context_size, word_vec_size)
             similarity_mult = tf.matmul(context, tf.transpose(query, perm=(0,2,1))) # (batch_size, context_size, query_size)
+            
             similarity_context = tf.contrib.layers.fully_connected(context,
                     num_outputs=1,activation_fn=None, biases_initializer=None) # (batch_size, context_size, 1)
+            
             similarity_query = tf.contrib.layers.fully_connected(query, 
                     num_outputs=1, activation_fn=None, biases_initializer=None) #(batch_size, query_size, 1)
-            similarity_mat = similarity_mult + similarity_context + tf.transpose(similarity_query,perm=(0, 2, 1)) 
             
+            similarity_mat = similarity_mult + similarity_context + tf.transpose(similarity_query,perm=(0, 2, 1)) #(batch_size, context_size, query_size)
+            
+            #C2Q
             _, alpha_distribution = masked_softmax(similarity_mat, tf.expand_dims(query_mask, 1), 2) # (batch_size, context_size, query_size)
             C2Q = tf.matmul(alpha_distribution, query) # (batch_size, context_size, word_vec_size)
              
+            #Q2C
             max_sim = tf.reduce_max(similarity_mat, axis=2) # (batch_size, context_size)
             _, beta_distribution = masked_softmax(max_sim, context_mask, 1) # (batch_size, context_size)
             expanded_beta = tf.expand_dims(beta_distribution, axis=1) # (batch_size, 1, context_size)
             Q2C = tf.matmul(expanded_beta, context) # (batch_size, 1, word_vec_size)
             Q2C = tf.tile(Q2C, (1, tf.shape(context)[1], 1)) #(batch_size, context_size, word_vec_size) 
-                
+            
+            #Apply dropout
             output = tf.nn.dropout(tf.concat((C2Q, Q2C), axis=2), self.keep_prob)
             
             return None, output 

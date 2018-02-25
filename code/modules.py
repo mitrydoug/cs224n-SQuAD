@@ -230,8 +230,10 @@ class BiDAFAttn(object):
             expanded_beta = tf.expand_dims(beta_distribution, axis=1) # (batch_size, 1, context_size)
             Q2C = tf.matmul(expanded_beta, context) # (batch_size, 1, word_vec_size)
             Q2C = tf.tile(Q2C, (1, tf.shape(context)[1], 1)) #(batch_size, context_size, word_vec_size) 
- 
-            return None, tf.concat((C2Q, Q2C), axis=2)
+                
+            output = tf.nn.dropout(tf.concat((C2Q, Q2C), axis=2), self.keep_prob)
+            
+            return None, output 
 
             #TODO apply dropout to Q2C and C2Q? Or perhaps just one of them? 
 

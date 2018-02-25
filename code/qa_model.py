@@ -17,6 +17,7 @@
 from __future__ import absolute_import
 from __future__ import division
 
+import collections
 import time
 import logging
 import os
@@ -38,7 +39,7 @@ logging.basicConfig(level=logging.INFO)
 class QAModel(object):
     """Top-level Question Answering module"""
 
-    def __init__(self, FLAGS, id2word, word2id, emb_matrix):
+    def __init__(self, FLAGS, id2word, word2id, emb_matrix, train_ans_path):
         """
         Initializes the QA model.
 
@@ -52,6 +53,11 @@ class QAModel(object):
         self.FLAGS = FLAGS
         self.id2word = id2word
         self.word2id = word2id
+
+        with open(train_ans_path, 'r') as f:
+            self.train_ans_len_dist = collections.Counter(
+                map((lambda t: int(t[1])-int(t[0])+1),
+                    (line.strip().split() for line in f)))
 
         # Add all parts of the graph
         with tf.variable_scope("QAModel", initializer=tf.contrib.layers.variance_scaling_initializer(factor=1.0, uniform=True)):
@@ -130,11 +136,12 @@ class QAModel(object):
         # Use a RNN to get hidden states for the context and the question
         # Note: here the RNNEncoder is shared (i.e. the weights are the same)
         # between the context and the question.
-        encoder = RNNEncoder(self.FLAGS.preatt_hidden_size, self.keep_prob)
-        # (batch_size, context_len, context_hidden_size*2)
-        context_hiddens = encoder.build_graph(self.context_embs, self.context_mask)
-        # (batch_size, question_len, preatt_hidden_size*2)
-        question_hiddens = encoder.build_graph(self.qn_embs, self.qn_mask)
+        with vs.variable_scope("Context"):
+            encoder = RNNEncoder(self.FLAGS.preatt_hidden_size, self.keep_prob)
+            # (batch_size, context_len, context_hidden_size*2)
+            context_hiddens = encoder.build_graph(self.context_embs, self.context_mask)
+            # (batch_size, question_len, preatt_hidden_size*2)
+            question_hiddens = encoder.build_graph(self.qn_embs, self.qn_mask)
 
         # Use context hidden states to attend to question hidden states
         attn_layer = BiDAFAttn(self.keep_prob, self.FLAGS.preatt_hidden_size*2, self.FLAGS.preatt_hidden_size*2)
@@ -149,8 +156,9 @@ class QAModel(object):
         # Note, blended_reps_final corresponds to b' in the handout
         # Note, tf.contrib.layers.fully_connected applies a ReLU non-linarity here by default
         # blended_reps_final is shape (batch_size, context_len, postatt_hidden_size)
-        blended_reps_final = tf.contrib.layers.fully_connected(
-                blended_reps, num_outputs=self.FLAGS.postatt_hidden_size)
+        with vs.variable_scope("ModellingLayer"):
+            model_encoder = RNNEncoder(self.FLAGS.postatt_hidden_size, self.keep_prob)
+            blended_reps_final = model_encoder.build_graph(blended_reps, self.context_mask)
 
         # Use softmax layer to compute probability distribution for start location
         # Note this produces self.logits_start and self.probdist_start, both of which have shape (batch_size, context_len)
@@ -299,12 +307,29 @@ class QAModel(object):
           start_pos, end_pos: both numpy arrays shape (batch_size).
             The most likely start and end positions for each example in the batch.
         """
+
+        def get_ans_len_prob(start, end):
+            if end < start:
+                return 0
+            else:
+                count = self.train_ans_len_dist[end-start+1]
+                total = sum(self.train_ans_len_dist.values())
+                # "laplace smoothing"
+                return (((count+1.0)/(total+self.FLAGS.context_len))
+                        ** self.FLAGS.ans_len_dist_power)
+
         # Get start_dist and end_dist, both shape (batch_size, context_len)
         start_dist, end_dist = self.get_prob_dists(session, batch)
 
         # Take argmax to get start_pos and end_post, both shape (batch_size)
-        start_pos = np.argmax(start_dist, axis=1)
-        end_pos = np.argmax(end_dist, axis=1)
+        ans_len_dist = np.array([[get_ans_len_prob(s, e)
+                for e in range(self.FLAGS.context_len)]
+                for s in range(self.FLAGS.context_len)])
+        range_dist = np.array([(np.outer(S, E) * ans_len_dist).flatten()
+                for S, E in zip(start_dist, end_dist)])
+        locations = np.argmax(range_dist, axis=1)
+        start_pos = locations // self.FLAGS.context_len
+        end_pos = locations % self.FLAGS.context_len
 
         return start_pos, end_pos
 

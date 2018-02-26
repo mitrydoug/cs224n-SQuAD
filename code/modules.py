@@ -15,10 +15,9 @@
 """This file contains some basic model components"""
 
 import tensorflow as tf
-#from tensorflow.python.ops.rnn_cell import DropoutWrapper
+from tensorflow.python.ops.rnn_cell import DropoutWrapper
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import rnn_cell
-from tf.contrib.rnn import DropoutWrapper, LSTMCell  
 
 
 class LSTMEncoder(object):
@@ -35,10 +34,10 @@ class LSTMEncoder(object):
         """
         self.hidden_size = hidden_size
         self.keep_prob = keep_prob
-        self.rnn_cell_fw = LSTMCell(self.hidden_size)
-        self.rnn_cell_fw = DropoutWrapper(self.rnn_cell_fw, input_keep_prob=self.keep_prob)
-        self.rnn_cell_bw = LSTMCell(self.hidden_size)
-        self.rnn_cell_bw = DropoutWrapper(self.rnn_cell_bw, input_keep_prob=self.keep_prob)
+        self.rnn_cell_fw = tf.nn.rnn_cell.LSTMCell(self.hidden_size)
+        self.rnn_cell_fw = tf.nn.rnn_cell.DropoutWrapper(self.rnn_cell_fw, input_keep_prob=self.keep_prob)
+        self.rnn_cell_bw = tf.nn.rnn_cell.LSTMCell(self.hidden_size)
+        self.rnn_cell_bw = tf.nn.rnn_cell.DropoutWrapper(self.rnn_cell_bw, input_keep_prob=self.keep_prob)
 
     def build_graph(self, inputs, masks):
         """

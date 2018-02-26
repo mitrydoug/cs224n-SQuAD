@@ -1,11 +1,7 @@
 # Word Games (Part Deux)
 
-### Experimental Results
-- baseline
-    - F1 = 44.0, EM = 34.7
-- mitchell-predict-nonempty
-    - F1 = 49.4, EM = 38.1
-    - **Note**: uses baseline best model
-- mitchell-ans-len-dist
-    - F1 = 51.4, EM = 41.6
-    - **Note**: uses --ans_len_dist_power=0.2
+# design changes
+BiDAF attention
+Modeling layer as in paper (1 LSTM layer hiddens to start and to 2nd LSTM for end)
+    uses concatenation of attention layer output as well
+

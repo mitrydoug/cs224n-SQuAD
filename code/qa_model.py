@@ -31,7 +31,7 @@ from tensorflow.python.ops import embedding_ops
 from evaluate import exact_match_score, f1_score
 from data_batcher import get_batch_generator
 from pretty_print import print_example
-from modules import RNNEncoder, SimpleSoftmaxLayer, BasicAttn, BiDAFAttn
+from modules import RNNEncoder, SimpleSoftmaxLayer, BasicAttn, BiDAFAttn, LSTMEncoder
 
 logging.basicConfig(level=logging.INFO)
 
@@ -137,7 +137,7 @@ class QAModel(object):
         # Note: here the RNNEncoder is shared (i.e. the weights are the same)
         # between the context and the question.
         with vs.variable_scope("Context"):
-            encoder = RNNEncoder(self.FLAGS.preatt_hidden_size, self.keep_prob)
+            encoder = LSTMEncoder(self.FLAGS.preatt_hidden_size, self.keep_prob)
             # (batch_size, context_len, context_hidden_size*2)
             context_hiddens = encoder.build_graph(self.context_embs, self.context_mask)
             # (batch_size, question_len, preatt_hidden_size*2)
@@ -157,7 +157,7 @@ class QAModel(object):
         # Note, tf.contrib.layers.fully_connected applies a ReLU non-linarity here by default
         # blended_reps_final is shape (batch_size, context_len, postatt_hidden_size)
         with vs.variable_scope("ModellingLayer"):
-            model_encoder = RNNEncoder(self.FLAGS.postatt_hidden_size, self.keep_prob)
+            model_encoder = LSTMEncoder(self.FLAGS.postatt_hidden_size, self.keep_prob)
             blended_reps_final = model_encoder.build_graph(blended_reps, self.context_mask)
 
         # Use softmax layer to compute probability distribution for start location

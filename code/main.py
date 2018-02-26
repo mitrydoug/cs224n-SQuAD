@@ -51,7 +51,6 @@ tf.app.flags.DEFINE_float("ans_len_dist_power", 1.0, "Power applied to answer le
 tf.app.flags.DEFINE_integer("batch_size", 100, "Batch size to use")
 tf.app.flags.DEFINE_integer("preatt_hidden_size", 200, "Size of the pre-attention layer hidden states")
 tf.app.flags.DEFINE_integer("postatt_hidden_size", 200, "Size of the post-attention layer hidden states")
-tf.app.flags.DEFINE_integer("end_hidden_size", 200, "Size of the end hidden states in output layer")
 tf.app.flags.DEFINE_integer("context_len", 600, "The maximum context length of your model")
 tf.app.flags.DEFINE_integer("question_len", 30, "The maximum question length of your model")
 tf.app.flags.DEFINE_integer("embedding_size", 100, "Size of the pretrained word vectors. This needs to be one of the available GloVe dimensions: 50/100/200/300")

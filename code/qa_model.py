@@ -156,21 +156,26 @@ class QAModel(object):
         # Note, blended_reps_final corresponds to b' in the handout
         # Note, tf.contrib.layers.fully_connected applies a ReLU non-linarity here by default
         # blended_reps_final is shape (batch_size, context_len, postatt_hidden_size)
-        with vs.variable_scope("ModellingLayer"):
-            model_encoder = RNNEncoder(self.FLAGS.postatt_hidden_size, self.keep_prob)
-            blended_reps_final = model_encoder.build_graph(blended_reps, self.context_mask)
-
+        with vs.variable_scope("ModelingLayerStart"):
+            model_layer1_encoder = RNNEncoder(self.FLAGS.postatt_hidden_size, self.keep_prob)
+            model_layer2_encoder = RNNEncoder(self.FLAGS.postatt_hidden_size, self.keep_prob)
+            model_layer1_hiddens = model_layer1_encoder.build_graph(blended_reps, self.context_mask)
+            model_layer2_hiddens = model_layer2_encoder.build_graph(model_layer1_hiddens, self.context_mask)
+        
         # Use softmax layer to compute probability distribution for start location
         # Note this produces self.logits_start and self.probdist_start, both of which have shape (batch_size, context_len)
         with vs.variable_scope("StartDist"):
+            blended_reps_start = tf.concat([blended_reps, model_layer1_hiddens], axis=2)
             softmax_layer_start = SimpleSoftmaxLayer()
-            self.logits_start, self.probdist_start = softmax_layer_start.build_graph(blended_reps_final, self.context_mask)
+            self.logits_start, self.probdist_start = softmax_layer_start.build_graph(blended_reps_start, self.context_mask)
 
         # Use softmax layer to compute probability distribution for end location
         # Note this produces self.logits_end and self.probdist_end, both of which have shape (batch_size, context_len)
         with vs.variable_scope("EndDist"):
-            softmax_layer_end = SimpleSoftmaxLayer()
-            self.logits_end, self.probdist_end = softmax_layer_end.build_graph(blended_reps_final, self.context_mask)
+            # concatenation has shape (batch_size, context_len, preatt_hidden_size*4 + postatt_hidden_size ~ 10d)
+            blended_reps_end = tf.concat([blended_reps, model_layer2_hiddens], axis=2)
+            softmax_layer_end = SimpleSoftmaxLayer() 
+            self.logits_end, self.probdist_end = softmax_layer_end.build_graph(blended_reps_end, self.context_mask)
 
 
     def add_loss(self):

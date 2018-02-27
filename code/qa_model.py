@@ -153,11 +153,11 @@ class QAModel(object):
         blended_reps = tf.concat([context_hiddens, attn_output], axis=2)
 
         with vs.variable_scope("ModelStart"):
-            model_start_encoder = RNNEncoder(self.FLAGS.postatt_hidden_size, self.keep_prob)
+            model_start_encoder = RNNEncoder(self.FLAGS.postatt_start_hidden_size, self.keep_prob)
             model_start_reps = model_start_encoder.build_graph(blended_reps, self.context_mask)
 
         with vs.variable_scope("ModelEnd"):
-            model_end_encoder = RNNEncoder(self.FLAGS.postatt_hidden_size, self.keep_prob)
+            model_end_encoder = RNNEncoder(self.FLAGS.postatt_end_hidden_size, self.keep_prob)
             model_end_reps = model_end_encoder.build_graph(model_start_reps, self.context_mask)
 
         # Use softmax layer to compute probability distribution for start location

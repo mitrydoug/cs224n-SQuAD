@@ -152,9 +152,13 @@ class QAModel(object):
         # (batch_size, context_len, preatt_hidden_size*4)
         blended_reps = tf.concat([context_hiddens, attn_output], axis=2)
 
-        with vs.variable_scope("ModelStart"):
-            model_start_encoder = LSTMEncoder(self.FLAGS.postatt_start_hidden_size, self.keep_prob)
-            model_start_reps = model_start_encoder.build_graph(blended_reps, self.context_mask)
+        with vs.variable_scope("ModelStart1"):
+            model_start_encoder1 = LSTMEncoder(self.FLAGS.postatt_start_hidden_size, self.keep_prob)
+            model_start_reps_0 = model_start_encoder1.build_graph(blended_reps, self.context_mask)
+
+        with vs.variable_scope("ModelStart2"):
+            model_start_encoder2 = LSTMEncoder(self.FLAGS.postatt_start_hidden_size, self.keep_prob)
+            model_start_reps = model_start_encoder2.build_graph(model_start_reps_0, self.context_mask)
 
         with vs.variable_scope("ModelEnd"):
             model_end_encoder = LSTMEncoder(self.FLAGS.postatt_end_hidden_size, self.keep_prob)

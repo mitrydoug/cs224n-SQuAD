@@ -125,8 +125,11 @@ class QAModel(object):
 
             # Get the word embeddings for the context and question,
             # using the placeholders self.context_ids and self.qn_ids
+
             self.context_embs = embedding_ops.embedding_lookup(embedding_matrix, self.context_ids) # shape (batch_size, context_len, embedding_size)
             self.qn_embs = embedding_ops.embedding_lookup(embedding_matrix, self.qn_ids) # shape (batch_size, question_len, embedding_size)
+            del self.raw_embeddings
+            sess.close()
 
 
     def build_graph(self):

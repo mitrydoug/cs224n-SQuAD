@@ -115,21 +115,20 @@ class QAModel(object):
         with vs.variable_scope("embeddings"):
 
             emb_matrix_shape = self.raw_embeddings.shape
-            embedding_matrix = tf.Variable(tf.constant(0.0, shape=emb_matrix_shape), trainable=False, name="emb_matrix")
-            embedding_placeholder = tf.placeholder(tf.float32, shape=emb_matrix_shape)
-            embedding_init = embedding_matrix.assign(embedding_placeholder)
+            print emb_matrix_shape
+            # embedding_matrix = tf.Variable(tf.constant(0.0, shape=emb_matrix_shape), trainable=False, name="emb_matrix")
+            self.embedding_matrix = tf.placeholder(tf.float32, shape=emb_matrix_shape)
+            # embedding_init = embedding_matrix.assign(embedding_placeholder)
 
             # Initialize the embeddings through feed_dict because tf.constant() is not memory-efficient
-            sess = tf.Session()
-            sess.run(embedding_init, feed_dict={embedding_placeholder: self.raw_embeddings})
+            # sess = tf.Session()
+            # sess.run(embedding_init, feed_dict={embedding_placeholder: self.raw_embeddings})
 
             # Get the word embeddings for the context and question,
             # using the placeholders self.context_ids and self.qn_ids
 
-            self.context_embs = embedding_ops.embedding_lookup(embedding_matrix, self.context_ids) # shape (batch_size, context_len, embedding_size)
-            self.qn_embs = embedding_ops.embedding_lookup(embedding_matrix, self.qn_ids) # shape (batch_size, question_len, embedding_size)
-            del self.raw_embeddings
-            sess.close()
+            self.context_embs = embedding_ops.embedding_lookup(self.embedding_matrix, self.context_ids) # shape (batch_size, context_len, embedding_size)
+            self.qn_embs = embedding_ops.embedding_lookup(self.embedding_matrix, self.qn_ids) # shape (batch_size, question_len, embedding_size)
 
 
     def build_graph(self):
@@ -248,6 +247,7 @@ class QAModel(object):
         input_feed[self.qn_mask] = batch.qn_mask
         input_feed[self.ans_span] = batch.ans_span
         input_feed[self.keep_prob] = 1.0 - self.FLAGS.dropout # apply dropout
+        input_feed[self.embedding_matrix] = self.raw_embeddings
 
         # output_feed contains the things we want to fetch.
         output_feed = [self.updates, self.summaries, self.loss, self.global_step, self.param_norm, self.gradient_norm]

@@ -54,7 +54,7 @@ tf.app.flags.DEFINE_integer("postatt_start_hidden_size", 200, "Size of the post-
 tf.app.flags.DEFINE_integer("postatt_end_hidden_size", 200, "Size of the post-attension layer hidden states for end prediction")
 tf.app.flags.DEFINE_integer("context_len", 600, "The maximum context length of your model")
 tf.app.flags.DEFINE_integer("question_len", 30, "The maximum question length of your model")
-tf.app.flags.DEFINE_integer("embedding_size", 100, "Size of the pretrained word vectors. This needs to be one of the available GloVe dimensions: 50/100/200/300")
+tf.app.flags.DEFINE_integer("embedding_size", 300, "Size of the pretrained word vectors. This needs to be one of the available GloVe dimensions: 50/100/200/300")
 
 # How often to print, save, eval
 tf.app.flags.DEFINE_integer("print_every", 1, "How many iterations to do per print.")
@@ -69,6 +69,7 @@ tf.app.flags.DEFINE_string("data_dir", DEFAULT_DATA_DIR, "Where to find preproce
 tf.app.flags.DEFINE_string("ckpt_load_dir", "", "For official_eval mode, which directory to load the checkpoint fron. You need to specify this for official_eval mode.")
 tf.app.flags.DEFINE_string("json_in_path", "", "For official_eval mode, path to JSON input file. You need to specify this for official_eval_mode.")
 tf.app.flags.DEFINE_string("json_out_path", "predictions.json", "Output path for official_eval mode. Defaults to predictions.json")
+tf.app.flags.DEFINE_string("glove_set", "", "Which set of glove vectors to use [small/large]. Defaults to small.")
 
 
 FLAGS = tf.app.flags.FLAGS
@@ -121,11 +122,24 @@ def main(unused_argv):
     # Initialize bestmodel directory
     bestmodel_dir = os.path.join(FLAGS.train_dir, "best_checkpoint")
 
+    # Determine which set of glove vecs we are using, ensure consistency across flags
+    if not FLAGS.glove_set:
+        FLAGS.glove_set = 'small'
+    if FLAGS.glove_set not in ('small', 'large'):
+        raise Exception("Invalid glove set: %s" % FLAGS.glove_set)
+    if FLAGS.glove_set == 'small':
+        vocab_size = 4e5
+        embedding_set = 6
+    if FLAGS.glove_set == 'large':
+        FLAGS.embedding_size = 300
+        vocab_size = 2196016
+        embedding_set = 840
+
     # Define path for glove vecs
-    FLAGS.glove_path = FLAGS.glove_path or os.path.join(DEFAULT_DATA_DIR, "glove.6B.{}d.txt".format(FLAGS.embedding_size))
+    FLAGS.glove_path = FLAGS.glove_path or os.path.join(DEFAULT_DATA_DIR, "glove.{}B.{}d.txt".format(embedding_set, FLAGS.embedding_size))
 
     # Load embedding matrix and vocab mappings
-    emb_matrix, word2id, id2word = get_glove(FLAGS.glove_path, FLAGS.embedding_size)
+    emb_matrix, word2id, id2word = get_glove(FLAGS.glove_path, FLAGS.embedding_size, vocab_size)
 
     # Get filepaths to train/dev datafiles for tokenized queries, contexts and answers
     train_context_path = os.path.join(FLAGS.data_dir, "train.context")

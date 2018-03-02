@@ -53,6 +53,7 @@ class QAModel(object):
         self.FLAGS = FLAGS
         self.id2word = id2word
         self.word2id = word2id
+        self.raw_embeddings = emb_matrix
 
         with open(train_ans_path, 'r') as f:
             self.train_ans_len_dist = collections.Counter(
@@ -113,8 +114,14 @@ class QAModel(object):
         """
         with vs.variable_scope("embeddings"):
 
-            # Note: the embedding matrix is a tf.constant which means it's not a trainable parameter
-            embedding_matrix = tf.constant(emb_matrix, dtype=tf.float32, name="emb_matrix") # shape (400002, embedding_size)
+            emb_matrix_shape = self.raw_embeddings.shape
+            embedding_matrix = tf.Variable(tf.constant(0.0, shape=emb_matrix_shape), trainable=False, name="emb_matrix")
+            embedding_placeholder = tf.placeholder(tf.float32, shape=emb_matrix_shape)
+            embedding_init = embedding_matrix.assign(embedding_placeholder)
+
+            # Initialize the embeddings through feed_dict because tf.constant() is not memory-efficient
+            sess = tf.Session()
+            sess.run(embedding_init, feed_dict={embedding_placeholder: self.raw_embeddings})
 
             # Get the word embeddings for the context and question,
             # using the placeholders self.context_ids and self.qn_ids

@@ -115,18 +115,12 @@ class QAModel(object):
         with vs.variable_scope("embeddings"):
 
             emb_matrix_shape = self.raw_embeddings.shape
-            print emb_matrix_shape
-            # embedding_matrix = tf.Variable(tf.constant(0.0, shape=emb_matrix_shape), trainable=False, name="emb_matrix")
-            self.embedding_matrix = tf.placeholder(tf.float32, shape=emb_matrix_shape)
-            # embedding_init = embedding_matrix.assign(embedding_placeholder)
 
-            # Initialize the embeddings through feed_dict because tf.constant() is not memory-efficient
-            # sess = tf.Session()
-            # sess.run(embedding_init, feed_dict={embedding_placeholder: self.raw_embeddings})
+            # Initialize the embeddings through feed_dict because tensorflow doesn't support constants >= 2 GB
+            self.embedding_matrix = tf.placeholder(tf.float32, shape=emb_matrix_shape)
 
             # Get the word embeddings for the context and question,
             # using the placeholders self.context_ids and self.qn_ids
-
             self.context_embs = embedding_ops.embedding_lookup(self.embedding_matrix, self.context_ids) # shape (batch_size, context_len, embedding_size)
             self.qn_embs = embedding_ops.embedding_lookup(self.embedding_matrix, self.qn_ids) # shape (batch_size, question_len, embedding_size)
 

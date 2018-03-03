@@ -31,7 +31,7 @@ from tensorflow.python.ops import embedding_ops
 from evaluate import exact_match_score, f1_score
 from data_batcher import get_batch_generator
 from pretty_print import print_example
-from modules import RNNEncoder, SimpleSoftmaxLayer, BasicAttn, BiDAFAttn, LSTMEncoder
+from modules import RNNEncoder, SimpleSoftmaxLayer, BasicAttn, BiDAFAttn, LSTMEncoder, DenseAndSoftmaxLayer
 
 logging.basicConfig(level=logging.INFO)
 
@@ -144,12 +144,12 @@ class QAModel(object):
             question_hiddens = encoder.build_graph(self.qn_embs, self.qn_mask)
 
         # Use context hidden states to attend to question hidden states
-        attn_layer = BiDAFAttn(self.keep_prob, self.FLAGS.preatt_hidden_size*2, self.FLAGS.preatt_hidden_size*2)
-        # attn_output is shape (batch_size, context_len, preatt_hidden_size*2)
+        attn_layer = BiDAFAttn(self.keep_prob, self.FLAGS.preatt_hidden_size*2)
+        # attn_output is shape (batch_size, context_len, 6*preatt_hidden_size)
         _, attn_output = attn_layer.build_graph(question_hiddens, self.qn_mask, context_hiddens, self.context_mask)
 
         # Concat attn_output to context_hiddens to get blended_reps
-        # (batch_size, context_len, preatt_hidden_size*4)
+        # (batch_size, context_len, preatt_hidden_size*8)
         blended_reps = tf.concat([context_hiddens, attn_output], axis=2)
 
         with vs.variable_scope("ModelStart1"):
@@ -167,15 +167,16 @@ class QAModel(object):
         # Use softmax layer to compute probability distribution for start location
         # Note this produces self.logits_start and self.probdist_start, both of which have shape (batch_size, context_len)
         with vs.variable_scope("StartDist"):
+            #(batch_size, context_len, preatt_hidden_size*8 + 2*postatt_start_hidden_size)
             model_start_reps = tf.concat([blended_reps, model_start_reps], axis=2)
-            softmax_layer_start = SimpleSoftmaxLayer()
+            softmax_layer_start = DenseAndSoftmaxLayer(self.keep_prob)
             self.logits_start, self.probdist_start = softmax_layer_start.build_graph(model_start_reps, self.context_mask)
 
         # Use softmax layer to compute probability distribution for end location
         # Note this produces self.logits_end and self.probdist_end, both of which have shape (batch_size, context_len)
         with vs.variable_scope("EndDist"):
             model_end_reps = tf.concat([blended_reps, model_end_reps], axis=2)
-            softmax_layer_end = SimpleSoftmaxLayer()
+            softmax_layer_end = DenseAndSoftmaxLayer(self.keep_prob)
             self.logits_end, self.probdist_end = softmax_layer_end.build_graph(model_end_reps, self.context_mask)
 
 

@@ -75,12 +75,10 @@ def evaluate(dataset, predictions):
     return {'exact_match': exact_match, 'f1': f1}
 
 def write_wrong_preds(filename, dataset, predictions):
-    f1 = exact_match = total = 0
     incorrect_predictions = []
     for article in dataset:
         for paragraph in article['paragraphs']:
             for qa in paragraph['qas']:
-                total += 1
                 if qa['id'] not in predictions:
                     message = 'Unanswered question ' + qa['id'] + \
                               ' will receive score 0.'
@@ -90,6 +88,8 @@ def write_wrong_preds(filename, dataset, predictions):
                 prediction = predictions[qa['id']]
                 
                 if metric_max_over_ground_truths(exact_match_score, prediction, ground_truths) == 0:
+                    prediction = normalize_answer(prediction)
+                    ground_truths = map(normalize_answer, ground_truths)
                     incorrect_prediction = (prediction, ground_truths)
                     incorrect_predictions.append(incorrect_prediction)
     with open(filename, 'w') as the_file:

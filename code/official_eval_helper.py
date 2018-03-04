@@ -269,7 +269,12 @@ def generate_answers(session, model, word2id, qn_uuid_data, context_token_data, 
 
             # Detokenize and add to dict
             uuid = batch.uuids[ex_idx]
-            uuid2ans[uuid] = detokenizer.detokenize(pred_ans_tokens, return_str=True)
+            ans = detokenizer.detokenize(pred_ans_tokens, return_str=True)
+            if ans[0] == u'\2019':
+                ans = ans[1:].lstrip()
+            ans = ans.replace(u'\2019 s ', u'\2019s ')
+            ans = ans.replace(u' \2019', u'\2019')
+            uuid2ans[uuid] = ans
 
         batch_num += 1
 

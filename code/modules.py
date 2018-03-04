@@ -312,18 +312,22 @@ class BiDAFAttn(object):
             #C2Q
             _, alpha_distribution = masked_softmax(similarity_mat, tf.expand_dims(query_mask, 1), 2) # (batch_size, context_size, query_size)
             C2Q = tf.matmul(alpha_distribution, query) # (batch_size, context_size, word_vec_size)
-             
+            
+            #Apply dropout
+            C2Q = tf.nn.dropout(C2Q, self.keep_prob)
+
             #Q2C
             max_sim = tf.reduce_max(similarity_mat, axis=2) # (batch_size, context_size)
             _, beta_distribution = masked_softmax(max_sim, context_mask, 1) # (batch_size, context_size)
             expanded_beta = tf.expand_dims(beta_distribution, axis=1) # (batch_size, 1, context_size)
             Q2C = tf.matmul(expanded_beta, context) # (batch_size, 1, word_vec_size)
+            Q2C = tf.nn.dropout(Q2C, self.keep_prob)
             
             #apply beta function
             output = tf.concat([C2Q, C2Q*context, Q2C*context], axis=2)
 
             #Apply dropout
-            #output = tf.nn.dropout(output, self.keep_prob)
+            
             #TODO: experiments involving dropout
             return None, output 
 

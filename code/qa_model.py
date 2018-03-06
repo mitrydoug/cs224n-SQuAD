@@ -56,6 +56,11 @@ class QAModel(object):
         self.word2id = word2id
         self.raw_embeddings = emb_matrix
 
+        with open(train_ans_path, 'r') as f:
+            self.train_ans_len_dist = collections.Counter(
+                map((lambda t: int(t[1])-int(t[0])+1),
+                    (line.strip().split() for line in f)))
+
         # Add all parts of the graph
         with tf.variable_scope("QAModel", initializer=tf.contrib.layers.variance_scaling_initializer(factor=1.0, uniform=True)):
             self.add_placeholders()
@@ -159,7 +164,15 @@ class QAModel(object):
             model_start_encoder2 = LSTMEncoder(self.FLAGS.postatt_start_hidden_size, self.keep_prob)
             self.model_start_reps = model_start_encoder2.build_graph(model_start_reps_0, self.context_mask)
 
-        # teacher-forcing. We are going to add a channel to model_start_reps which simply holds
+        # Use softmax layer to compute probability distribution for start location
+        # Note this produces self.logits_start and self.probdist_start, both of which have shape (batch_size, context_len)
+        with vs.variable_scope("StartDist"):
+            output_start_reps = tf.concat([blended_reps, self.model_start_reps], axis=2)
+            softmax_layer_start = DenseAndSoftmaxLayer(self.keep_prob)
+            self.logits_start, self.probdist_start = softmax_layer_start.build_graph(output_start_reps, self.context_mask)
+
+        # We are going to add a channel to model_start_reps which simply holds the start
+        # distribution given by the Dense Softmax Layer.
         # a 1. in the position of the start location. The dimension of gold_start_position is
         # (batch_size, context_len, 1)
         gold_start_pos = tf.scatter_nd(
@@ -174,21 +187,15 @@ class QAModel(object):
                 tf.ones(tf.shape(self.model_start_reps)[:1]),
                 # shape
                 tf.shape(self.model_start_reps)[:-1])
-        # model_start_reps_aug contains an extra channel in the hidden states which is 1.0 for the
-        # correct start location.
+        # model_start_reps_aug contains an extra channel in the hidden states which is the
+        # start_dist computed by the DenseSoftmax layer.
         model_start_reps_aug = tf.concat(
-                [self.model_start_reps, tf.expand_dims(gold_start_pos, axis=2)], axis=2)
+                [self.model_start_reps, tf.expand_dims(self.probdist_start, axis=2)],
+                 axis=2)
 
         with vs.variable_scope("ModelEnd"):
             model_end_encoder = LSTMEncoder(self.FLAGS.postatt_end_hidden_size, self.keep_prob)
             model_end_reps = model_end_encoder.build_graph(model_start_reps_aug, self.context_mask)
-
-        # Use softmax layer to compute probability distribution for start location
-        # Note this produces self.logits_start and self.probdist_start, both of which have shape (batch_size, context_len)
-        with vs.variable_scope("StartDist"):
-            output_start_reps = tf.concat([blended_reps, self.model_start_reps], axis=2)
-            softmax_layer_start = DenseAndSoftmaxLayer(self.keep_prob)
-            self.logits_start, self.probdist_start = softmax_layer_start.build_graph(output_start_reps, self.context_mask)
 
         # Use softmax layer to compute probability distribution for end location
         # Note this produces self.logits_end and self.probdist_end, both of which have shape (batch_size, context_len)
@@ -324,8 +331,7 @@ class QAModel(object):
 
     def get_start_end_pos(self, session, batch):
         """
-        Search all possible start-end combinations by feeding model with various
-        start positions and computing the resulding end-position distributions.
+        Run forward-pass only; get the most likely answer span.
 
         Inputs:
           session: TensorFlow session
@@ -336,61 +342,30 @@ class QAModel(object):
             The most likely start and end positions for each example in the batch.
         """
 
-        # we need this feed dict to compute subgraphs of our tensor graph
-        input_feed = {}
-        input_feed[self.context_ids] = batch.context_ids
-        input_feed[self.context_mask] = batch.context_mask
-        input_feed[self.qn_ids] = batch.qn_ids
-        input_feed[self.qn_mask] = batch.qn_mask
+        def get_ans_len_prob(start, end):
+            if end < start:
+                return 0
+            else:
+                count = self.train_ans_len_dist[end-start+1]
+                total = sum(self.train_ans_len_dist.values())
+                # "laplace smoothing"
+                return (((count+1.0)/(total+self.FLAGS.context_len))
+                        ** self.FLAGS.ans_len_dist_power)
 
-        # first-up, compute the model_start_reps and the distribution for
-        # start locations.
-        output_feed = [self.model_start_reps, self.probdist_start]
-        [batch_start_reps, batch_start_dist] = session.run(output_feed, input_feed)
+        # Get start_dist and end_dist, both shape (batch_size, context_len)
+        start_dist, end_dist = self.get_prob_dists(session, batch)
 
-        # here we will search for the best (start, end) pair.
-        start_pos, end_pos = [], []
-        for idx, start_dist in enumerate(batch_start_dist):
-            input_feed = {}
+        # Take argmax to get start_pos and end_post, both shape (batch_size)
+        ans_len_dist = np.array([[get_ans_len_prob(s, e)
+                for e in range(self.FLAGS.context_len)]
+                for s in range(self.FLAGS.context_len)])
+        range_dist = np.array([(np.outer(S, E) * ans_len_dist).flatten()
+                for S, E in zip(start_dist, end_dist)])
+        locations = np.argmax(range_dist, axis=1)
+        start_pos = locations // self.FLAGS.context_len
+        end_pos = locations % self.FLAGS.context_len
 
-            # need to feed the model start reps to be able to compute
-            # model end reps. Notice that we are reducing the dimension of
-            # these reps to only keep the current example.
-            input_feed[self.model_start_reps] = batch_start_reps[idx:idx+1]
-
-            best_range = None
-            best_log_prob = None
-            # get indices for starting position by most probable first
-            start_dist_sort = np.argsort(-start_dist)
-            for start_idx in start_dist_sort:
-                if start_dist[start_idx] <= best_prob:
-                    # can't win with this start position!
-                    continue
-
-                # this is the starting position that we are emulating. The end
-                # position is un-important since it is discarded by the graph.
-                input_feed[self.ans_span] = [[start_idx, 0]]
-                output_feed = [self.probdist_end]
-
-                # we get our end_dist by running computation graph. The best
-                # end position for our given start position is clearly the one
-                # with the highest likelihood.
-                [end_dist] = session.run(output_feed, input_feed)
-                end_idx = np.argmax(end_dist)
-
-                # was this the best start/end thus far?
-                if (best_range is None or
-                        (np.log(start_dist[start_idx]+1e-100) +
-                         np.log(end_dist[end_idx]+1e-100) * self.FLAGS.end_dist_power)
-                         > best_log_prob):
-                    best_range = [start_idx, end_idx]
-                    best_log_prob = (np.log(start_dist[start_idx]+1e-100) +
-                                     np.log(end_dist[end_idx]+1e-100)
-                                     * self.FLAGS.end_dist_power)
-            start_pos.append(best_range[0])
-            end_pos.append(best_range[1])
-
-        return np.array(start_pos), np.array(end_pos)
+        return start_pos, end_pos
 
 
     def get_dev_loss(self, session, dev_context_path, dev_qn_path, dev_ans_path):

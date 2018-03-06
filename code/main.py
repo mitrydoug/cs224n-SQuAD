@@ -47,7 +47,7 @@ tf.app.flags.DEFINE_integer("num_epochs", 0, "Number of epochs to train. 0 means
 tf.app.flags.DEFINE_float("learning_rate", 0.001, "Learning rate.")
 tf.app.flags.DEFINE_float("max_gradient_norm", 5.0, "Clip gradients to this norm.")
 tf.app.flags.DEFINE_float("dropout", 0.15, "Fraction of units randomly dropped on non-recurrent connections.")
-tf.app.flags.DEFINE_float("end_dist_power", 0.0, "Power applied to end len distribution in get_start_end_pos")
+tf.app.flags.DEFINE_float("ans_len_dist_power", 0.0, "Power applied to end len distribution in get_start_end_pos")
 tf.app.flags.DEFINE_integer("batch_size", 100, "Batch size to use")
 tf.app.flags.DEFINE_integer("preatt_hidden_size", 200, "Size of the pre-attension layer hidden states")
 tf.app.flags.DEFINE_integer("postatt_start_hidden_size", 200, "Size of the post-attension layer hidden states for start prediction")

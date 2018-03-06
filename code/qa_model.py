@@ -324,7 +324,8 @@ class QAModel(object):
 
     def get_start_end_pos(self, session, batch):
         """
-        Run forward-pass only; get the most likely answer span.
+        Search all possible start-end combinations by feeding model with various
+        start positions and computing the resulding end-position distributions.
 
         Inputs:
           session: TensorFlow session
@@ -379,11 +380,13 @@ class QAModel(object):
 
                 # was this the best start/end thus far?
                 if (best_range is None or
-                        (np.log(start_dist[start_idx]) +
-                         np.log(end_dist[end_idx])) > best_log_prob):
+                        (np.log(start_dist[start_idx]+1e-100) +
+                         np.log(end_dist[end_idx]+1e-100) * self.FLAGS.end_dist_power)
+                         > best_log_prob):
                     best_range = [start_idx, end_idx]
-                    best_log_prob = (np.log(start_dist[start_idx]) +
-                                     np.log(end_dist[end_idx]))
+                    best_log_prob = (np.log(start_dist[start_idx]+1e-100) +
+                                     np.log(end_dist[end_idx]+1e-100)
+                                     * self.FLAGS.end_dist_power)
             start_pos.append(best_range[0])
             end_pos.append(best_range[1])
 

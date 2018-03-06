@@ -28,7 +28,7 @@ PAD_ID = 0
 UNK_ID = 1
 
 
-def get_glove(glove_path, glove_dim):
+def get_glove(glove_path, glove_dim, vocab_size):
     """Reads from original GloVe .txt file and returns embedding matrix and
     mappings from words to word ids.
 
@@ -45,7 +45,7 @@ def get_glove(glove_path, glove_dim):
     """
 
     print "Loading GLoVE vectors from file: %s" % glove_path
-    vocab_size = int(4e5) # this is the vocab size of the corpus we've downloaded
+    vocab_size = int(vocab_size) # this is the vocab size of the corpus we've downloaded
 
     emb_matrix = np.zeros((vocab_size + len(_START_VOCAB), glove_dim))
     word2id = {}
@@ -68,6 +68,8 @@ def get_glove(glove_path, glove_dim):
         for line in tqdm(fh, total=vocab_size):
             line = line.lstrip().rstrip().split(" ")
             word = line[0]
+            if word in word2id:
+                continue # keeps word2id and id2word consistent if the same word appears twice
             vector = list(map(float, line[1:]))
             if glove_dim != len(vector):
                 raise Exception("You set --glove_path=%s but --embedding_size=%i. If you set --glove_path yourself then make sure that --embedding_size matches!" % (glove_path, glove_dim))

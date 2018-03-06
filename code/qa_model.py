@@ -31,7 +31,7 @@ from tensorflow.python.ops import embedding_ops
 from evaluate import exact_match_score, f1_score
 from data_batcher import get_batch_generator
 from pretty_print import print_example
-from modules import RNNEncoder, SimpleSoftmaxLayer, BasicAttn, BiDAFAttn, LSTMEncoder
+from modules import RNNEncoder, SimpleSoftmaxLayer, BasicAttn, BiDAFAttn, LSTMEncoder, DenseAndSoftmaxLayer
 
 logging.basicConfig(level=logging.INFO)
 
@@ -53,6 +53,7 @@ class QAModel(object):
         self.FLAGS = FLAGS
         self.id2word = id2word
         self.word2id = word2id
+        self.raw_embeddings = emb_matrix
 
         with open(train_ans_path, 'r') as f:
             self.train_ans_len_dist = collections.Counter(
@@ -113,13 +114,15 @@ class QAModel(object):
         """
         with vs.variable_scope("embeddings"):
 
-            # Note: the embedding matrix is a tf.constant which means it's not a trainable parameter
-            embedding_matrix = tf.constant(emb_matrix, dtype=tf.float32, name="emb_matrix") # shape (400002, embedding_size)
+            emb_matrix_shape = self.raw_embeddings.shape
+
+            # Initialize the embeddings through feed_dict because tensorflow doesn't support constants >= 2 GB
+            self.embedding_matrix = tf.placeholder(tf.float32, shape=emb_matrix_shape)
 
             # Get the word embeddings for the context and question,
             # using the placeholders self.context_ids and self.qn_ids
-            self.context_embs = embedding_ops.embedding_lookup(embedding_matrix, self.context_ids) # shape (batch_size, context_len, embedding_size)
-            self.qn_embs = embedding_ops.embedding_lookup(embedding_matrix, self.qn_ids) # shape (batch_size, question_len, embedding_size)
+            self.context_embs = embedding_ops.embedding_lookup(self.embedding_matrix, self.context_ids) # shape (batch_size, context_len, embedding_size)
+            self.qn_embs = embedding_ops.embedding_lookup(self.embedding_matrix, self.qn_ids) # shape (batch_size, question_len, embedding_size)
 
 
     def build_graph(self):
@@ -144,17 +147,21 @@ class QAModel(object):
             question_hiddens = encoder.build_graph(self.qn_embs, self.qn_mask)
 
         # Use context hidden states to attend to question hidden states
-        attn_layer = BiDAFAttn(self.keep_prob, self.FLAGS.preatt_hidden_size*2, self.FLAGS.preatt_hidden_size*2)
-        # attn_output is shape (batch_size, context_len, preatt_hidden_size*2)
+        attn_layer = BiDAFAttn(self.keep_prob, self.FLAGS.preatt_hidden_size*2)
+        # attn_output is shape (batch_size, context_len, 6*preatt_hidden_size)
         _, attn_output = attn_layer.build_graph(question_hiddens, self.qn_mask, context_hiddens, self.context_mask)
 
         # Concat attn_output to context_hiddens to get blended_reps
-        # (batch_size, context_len, preatt_hidden_size*4)
+        # (batch_size, context_len, preatt_hidden_size*8)
         blended_reps = tf.concat([context_hiddens, attn_output], axis=2)
 
-        with vs.variable_scope("ModelStart"):
-            model_start_encoder = LSTMEncoder(self.FLAGS.postatt_start_hidden_size, self.keep_prob)
-            model_start_reps = model_start_encoder.build_graph(blended_reps, self.context_mask)
+        with vs.variable_scope("ModelStart1"):
+            model_start_encoder1 = LSTMEncoder(self.FLAGS.postatt_start_hidden_size, self.keep_prob)
+            model_start_reps_0 = model_start_encoder1.build_graph(blended_reps, self.context_mask)
+
+        with vs.variable_scope("ModelStart2"):
+            model_start_encoder2 = LSTMEncoder(self.FLAGS.postatt_start_hidden_size, self.keep_prob)
+            model_start_reps = model_start_encoder2.build_graph(model_start_reps_0, self.context_mask)
 
         with vs.variable_scope("ModelEnd"):
             model_end_encoder = LSTMEncoder(self.FLAGS.postatt_end_hidden_size, self.keep_prob)
@@ -163,15 +170,16 @@ class QAModel(object):
         # Use softmax layer to compute probability distribution for start location
         # Note this produces self.logits_start and self.probdist_start, both of which have shape (batch_size, context_len)
         with vs.variable_scope("StartDist"):
+            #(batch_size, context_len, preatt_hidden_size*8 + 2*postatt_start_hidden_size)
             model_start_reps = tf.concat([blended_reps, model_start_reps], axis=2)
-            softmax_layer_start = SimpleSoftmaxLayer()
+            softmax_layer_start = DenseAndSoftmaxLayer(self.keep_prob)
             self.logits_start, self.probdist_start = softmax_layer_start.build_graph(model_start_reps, self.context_mask)
 
         # Use softmax layer to compute probability distribution for end location
         # Note this produces self.logits_end and self.probdist_end, both of which have shape (batch_size, context_len)
         with vs.variable_scope("EndDist"):
             model_end_reps = tf.concat([blended_reps, model_end_reps], axis=2)
-            softmax_layer_end = SimpleSoftmaxLayer()
+            softmax_layer_end = DenseAndSoftmaxLayer(self.keep_prob)
             self.logits_end, self.probdist_end = softmax_layer_end.build_graph(model_end_reps, self.context_mask)
 
 
@@ -234,6 +242,7 @@ class QAModel(object):
         input_feed[self.qn_mask] = batch.qn_mask
         input_feed[self.ans_span] = batch.ans_span
         input_feed[self.keep_prob] = 1.0 - self.FLAGS.dropout # apply dropout
+        input_feed[self.embedding_matrix] = self.raw_embeddings
 
         # output_feed contains the things we want to fetch.
         output_feed = [self.updates, self.summaries, self.loss, self.global_step, self.param_norm, self.gradient_norm]
@@ -265,6 +274,7 @@ class QAModel(object):
         input_feed[self.qn_ids] = batch.qn_ids
         input_feed[self.qn_mask] = batch.qn_mask
         input_feed[self.ans_span] = batch.ans_span
+        input_feed[self.embedding_matrix] = self.raw_embeddings
         # note you don't supply keep_prob here, so it will default to 1 i.e. no dropout
 
         output_feed = [self.loss]
@@ -290,6 +300,7 @@ class QAModel(object):
         input_feed[self.context_mask] = batch.context_mask
         input_feed[self.qn_ids] = batch.qn_ids
         input_feed[self.qn_mask] = batch.qn_mask
+        input_feed[self.embedding_matrix] = self.raw_embeddings
         # note you don't supply keep_prob here, so it will default to 1 i.e. no dropout
 
         output_feed = [self.probdist_start, self.probdist_end]

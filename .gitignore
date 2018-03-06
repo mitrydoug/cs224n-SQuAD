@@ -2,3 +2,5 @@ data/
 experiments/
 .idea/
 *.pyc
+
+*.ipynb_checkpoints*

@@ -335,30 +335,52 @@ class QAModel(object):
             The most likely start and end positions for each example in the batch.
         """
 
+        # we need this feed dict to compute subgraphs of our tensor graph
         input_feed = {}
         input_feed[self.context_ids] = batch.context_ids
         input_feed[self.context_mask] = batch.context_mask
         input_feed[self.qn_ids] = batch.qn_ids
         input_feed[self.qn_mask] = batch.qn_mask
+
+        # first-up, compute the model_start_reps and the distribution for
+        # start locations.
         output_feed = [self.model_start_reps, self.probdist_start]
         [batch_start_reps, batch_start_dist] = session.run(output_feed, input_feed)
+
+        # here we will search for the best (start, end) pair.
         start_pos, end_pos = [], []
         for idx, start_dist in enumerate(batch_start_dist):
             input_feed = {}
+
+            # need to feed the model start reps to be able to compute
+            # model end reps. Notice that we are reducing the dimension of
+            # these reps to only keep the current example.
             input_feed[self.model_start_reps] = batch_start_reps[idx:idx+1]
+
             best_range = None
             best_log_prob = None
+            # get indices for starting position by most probable first
             start_dist_sort = np.argsort(-start_dist)
             for start_idx in start_dist_sort:
                 if start_dist[start_idx] <= best_prob:
+                    # can't win with this start position!
                     continue
+
+                # this is the starting position that we are emulating. The end
+                # position is un-important since it is discarded by the graph.
                 input_feed[self.ans_span] = [[start_idx, 0]]
                 output_feed = [self.probdist_end]
+
+                # we get our end_dist by running computation graph. The best
+                # end position for our given start position is clearly the one
+                # with the highest likelihood.
                 [end_dist] = session.run(output_feed, input_feed)
                 end_idx = np.argmax(end_dist)
+
+                # was this the best start/end thus far?
                 if (best_range is None or
                         (np.log(start_dist[start_idx]) +
-                         np.log(end_dist[end_idx])) < best_log_prob):
+                         np.log(end_dist[end_idx])) > best_log_prob):
                     best_range = [start_idx, end_idx]
                     best_log_prob = (np.log(start_dist[start_idx]) +
                                      np.log(end_dist[end_idx]))

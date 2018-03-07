@@ -39,7 +39,8 @@ logging.basicConfig(level=logging.INFO)
 class QAModel(object):
     """Top-level Question Answering module"""
 
-    def __init__(self, FLAGS, id2word, word2id, emb_matrix, id2char, char2id, char_emb_matrix, train_ans_path):
+    def __init__(self, FLAGS, id2word, word2id, emb_matrix, id2char, char2id, char_emb_matrix, train_ans_path,
+                 ensemble_prefix=""):
         """
         Initializes the QA model.
 
@@ -65,7 +66,8 @@ class QAModel(object):
                     (line.strip().split() for line in f)))
 
         # Add all parts of the graph
-        with tf.variable_scope("QAModel", initializer=tf.contrib.layers.variance_scaling_initializer(factor=1.0, uniform=True)):
+        with tf.variable_scope("{}QAModel".format(ensemble_prefix),
+                initializer=tf.contrib.layers.variance_scaling_initializer(factor=1.0, uniform=True)):
             self.add_placeholders()
             self.add_embedding_layer(emb_matrix)
             self.build_graph()
@@ -85,7 +87,14 @@ class QAModel(object):
         self.updates = opt.apply_gradients(zip(clipped_gradients, params), global_step=self.global_step)
 
         # Define savers (for checkpointing) and summaries (for tensorboard)
-        self.saver = tf.train.Saver(tf.global_variables(), max_to_keep=FLAGS.keep)
+        if ensemble_prefix != "":
+            saver_dict = {}
+            for var in tf.global_variables(scope="{}QAModel".format(ensemble_prefix)):
+                saver_dict[var.op.name[len(ensemble_prefix):]] = var
+            self.saver = tf.train.Saver(saver_dict, max_to_keep=FLAGS.keep)
+        else:
+            self.saver = tf.train.Saver(tf.global_variables(), max_to_keep=FLAGS.keep)
+
         self.bestmodel_saver = tf.train.Saver(tf.global_variables(), max_to_keep=1)
         self.summaries = tf.summary.merge_all()
 

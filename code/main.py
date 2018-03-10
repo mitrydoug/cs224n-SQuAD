@@ -50,6 +50,7 @@ tf.app.flags.DEFINE_float("dropout", 0.15, "Fraction of units randomly dropped o
 tf.app.flags.DEFINE_float("ans_len_dist_power", 0.0, "Power applied to answer len distribution post DL model")
 tf.app.flags.DEFINE_integer("batch_size", 100, "Batch size to use")
 tf.app.flags.DEFINE_integer("preatt_hidden_size", 200, "Size of the pre-attension layer hidden states")
+tf.app.flags.DEFINE_integer("att_hidden_size", 200, "Size of the doubly-basic attension hidden states")
 tf.app.flags.DEFINE_integer("postatt_start_hidden_size", 200, "Size of the post-attension layer hidden states for start prediction")
 tf.app.flags.DEFINE_integer("postatt_end_hidden_size", 200, "Size of the post-attension layer hidden states for end prediction")
 tf.app.flags.DEFINE_integer("context_len", 600, "The maximum context length of your model")

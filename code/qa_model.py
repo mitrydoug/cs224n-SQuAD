@@ -31,7 +31,7 @@ from tensorflow.python.ops import embedding_ops
 from evaluate import exact_match_score, f1_score
 from data_batcher import get_batch_generator
 from pretty_print import print_example
-from modules import RNNEncoder, SimpleSoftmaxLayer, BasicAttn, BiDAFAttn, LSTMEncoder, DenseAndSoftmaxLayer
+from modules import RNNEncoder, SimpleSoftmaxLayer, DoublyBasicAttn, LSTMEncoder, DenseAndSoftmaxLayer
 
 logging.basicConfig(level=logging.INFO)
 
@@ -147,9 +147,10 @@ class QAModel(object):
             question_hiddens = encoder.build_graph(self.qn_embs, self.qn_mask)
 
         # Use context hidden states to attend to question hidden states
-        attn_layer = BiDAFAttn(self.keep_prob, self.FLAGS.preatt_hidden_size*2)
+        attn_layer = DoublyBasicAttn(self.FLAGS.att_hidden_size, self.keep_prob)
         # attn_output is shape (batch_size, context_len, 6*preatt_hidden_size)
-        _, attn_output = attn_layer.build_graph(question_hiddens, self.qn_mask, context_hiddens, self.context_mask)
+        _, attn_output = attn_layer.build_graph(
+                context_hiddens, question_hiddens, self.context_mask, self.qn_mask)
 
         # Concat attn_output to context_hiddens to get blended_reps
         # (batch_size, context_len, preatt_hidden_size*8)
@@ -157,11 +158,11 @@ class QAModel(object):
 
         with vs.variable_scope("ModelStart1"):
             model_start_encoder1 = LSTMEncoder(self.FLAGS.postatt_start_hidden_size, self.keep_prob)
-            model_start_reps_0 = model_start_encoder1.build_graph(blended_reps, self.context_mask)
+            model_start_reps = model_start_encoder1.build_graph(blended_reps, self.context_mask)
 
-        with vs.variable_scope("ModelStart2"):
-            model_start_encoder2 = LSTMEncoder(self.FLAGS.postatt_start_hidden_size, self.keep_prob)
-            model_start_reps = model_start_encoder2.build_graph(model_start_reps_0, self.context_mask)
+        #with vs.variable_scope("ModelStart2"):
+        #    model_start_encoder2 = LSTMEncoder(self.FLAGS.postatt_start_hidden_size, self.keep_prob)
+        #    model_start_reps = model_start_encoder2.build_graph(model_start_reps_0, self.context_mask)
 
         with vs.variable_scope("ModelEnd"):
             model_end_encoder = LSTMEncoder(self.FLAGS.postatt_end_hidden_size, self.keep_prob)

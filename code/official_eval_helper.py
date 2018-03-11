@@ -27,7 +27,7 @@ from nltk.tokenize.moses import MosesDetokenizer
 
 from preprocessing.squad_preprocess import data_from_json, tokenize
 from vocab import UNK_ID, PAD_ID
-from data_batcher import padded, Batch
+from data_batcher import padded, Batch, padded_char_ids
 
 
 
@@ -94,8 +94,8 @@ def refill_batches(batches, word2id, qn_uuid_data, context_token_data, qn_token_
     return
 
 
-
-def get_batch_generator(word2id, qn_uuid_data, context_token_data, qn_token_data, batch_size, context_len, question_len):
+def get_batch_generator(word2id, id2word, char2id, qn_uuid_data, context_token_data, qn_token_data, batch_size,
+                        context_len, question_len, word_len):
     """
     This is similar to get_batch_generator in data_batcher.py, but with some
     differences (see explanation in refill_batches).
@@ -125,6 +125,10 @@ def get_batch_generator(word2id, qn_uuid_data, context_token_data, qn_token_data
         qn_ids = padded(qn_ids, question_len) # pad questions to length question_len
         context_ids = padded(context_ids, context_len) # pad contexts to length context_len
 
+        # Create context_char_ids and qn_char_ids
+        qn_char_ids = np.array(padded_char_ids(qn_ids, id2word, char2id, word_len))
+        context_char_ids = np.array(padded_char_ids(context_ids, id2word, char2id, word_len))
+
         # Make qn_ids into a np array and create qn_mask
         qn_ids = np.array(qn_ids)
         qn_mask = (qn_ids != PAD_ID).astype(np.int32)
@@ -134,7 +138,9 @@ def get_batch_generator(word2id, qn_uuid_data, context_token_data, qn_token_data
         context_mask = (context_ids != PAD_ID).astype(np.int32)
 
         # Make into a Batch object
-        batch = Batch(context_ids, context_mask, context_tokens, qn_ids, qn_mask, qn_tokens=None, ans_span=None, ans_tokens=None, uuids=uuids)
+        batch = Batch(context_ids, context_mask, context_tokens, qn_ids, qn_mask, qn_tokens=None,
+                      qn_char_ids=qn_char_ids, context_char_ids=context_char_ids, ans_span=None, ans_tokens=None,
+                      uuids=uuids)
 
         yield batch
 
@@ -245,7 +251,6 @@ def generate_answers(session, model, word2id, id2word, char2id, qn_uuid_data, co
 
     print "Generating answers..."
 
-    # The arguments to get_batch_generator don't line up with the fxn definition, but it seems to work
     for batch in get_batch_generator(word2id, id2word, char2id, qn_uuid_data, context_token_data, qn_token_data,
                                      model.FLAGS.batch_size, model.FLAGS.context_len, model.FLAGS.question_len,
                                      model.FLAGS.word_len):

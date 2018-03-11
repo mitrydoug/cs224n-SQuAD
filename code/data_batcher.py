@@ -31,7 +31,8 @@ from char_embeds import PAD_CHAR_ID, UNK_CHAR_ID
 class Batch(object):
     """A class to hold the information needed for a training batch"""
 
-    def __init__(self, context_ids, context_mask, context_tokens, qn_ids, qn_mask, qn_tokens, qn_char_ids, context_char_ids, ans_span, ans_tokens, uuids=None):
+    def __init__(self, context_ids, context_mask, context_tokens, qn_ids, qn_mask, qn_tokens, qn_char_ids,
+                 context_char_ids, ans_span, ans_tokens, uuids=None):
         """
         Inputs:
           {context/qn}_ids: Numpy arrays.
@@ -152,10 +153,6 @@ def refill_batches(batches, word2id, char2id, context_file, qn_file, ans_file, b
         context_tokens, context_ids = sentence_to_token_ids(context_line, word2id)
         qn_tokens, qn_ids = sentence_to_token_ids(qn_line, word2id)
         ans_span = intstr_to_intlist(ans_line)
-
-        # Convert word tokens to char ids
-        context_char_ids = tokens_to_char_ids(context_tokens, char2id, word_len)
-        qn_char_ids = tokens_to_char_ids(qn_tokens, char2id, word_len)
 
         # read the next line from each file
         context_line, qn_line, ans_line = context_file.readline(), qn_file.readline(), ans_file.readline()

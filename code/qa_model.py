@@ -21,6 +21,7 @@ import collections
 import time
 import logging
 import os
+import pprint
 import sys
 
 import numpy as np
@@ -214,8 +215,15 @@ class QAModel(object):
             self.loss_end = tf.reduce_mean(loss_end)
             tf.summary.scalar('loss_end', self.loss_end)
 
+            params = tf.trainable_variables()
+            reg_params = []
+            for param in params:
+                if not 'bias' in param.name and not 'BiDAFAttn/ws' in param.name:
+                    reg_params.append(param)
+            l2_loss = tf.add_n([tf.nn.l2_loss(param) for param in reg_params])
+
             # Add the two losses
-            self.loss = self.loss_start + self.loss_end
+            self.loss = self.loss_start + self.loss_end + self.FLAGS.reg_weight * l2_loss
             tf.summary.scalar('loss', self.loss)
 
 

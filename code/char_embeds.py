@@ -10,8 +10,8 @@ char_set = set(['\x83', '\x87', '\x8b', '\x8f', '\x93', '\x97', '\x9b', '\x9f', 
 _PAD = b"<pad>"
 _UNK = b"<unk>"
 _START_CHARS = [_PAD, _UNK]
-PAD_ID = 0
-UNK_ID = 1
+PAD_CHAR_ID = 0
+UNK_CHAR_ID = 1
 
 def get_char_embeddings(char_dim, random_init=True):
     """Returns character embeddings matrix and mappings from characters

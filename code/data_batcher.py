@@ -85,7 +85,7 @@ def sentence_to_token_ids(sentence, word2id):
     return tokens, ids
 
 def padded_char_ids(token, char2id, max_word_len):
-    """Turns a word into a list of character indices, padded to the desired length. The input token should
+    """Turns a word into a list of character ids, padded to the desired length. The input token should
     already be truncated to the max_word_len, and padding is added up to max_word_len"""
     return [char2id.get(ch, UNK_CHAR_ID) for ch in token] + [PAD_CHAR_ID] * (len(token) - max_word_len)
 
@@ -129,7 +129,7 @@ def padded(token_batch, batch_pad=0):
     maxlen = max(map(lambda x: len(x), token_batch)) if batch_pad == 0 else batch_pad
     return map(lambda token_list: token_list + [PAD_ID] * (maxlen - len(token_list)), token_batch)
 
-def refill_batches(batches, word2id, char2id, context_file, qn_file, ans_file, batch_size, context_len, question_len, word_len, discard_long):
+def refill_batches(batches, word2id, context_file, qn_file, ans_file, batch_size, context_len, question_len, word_len, discard_long):
     """
     Adds more batches into the "batches" list.
 
@@ -226,7 +226,7 @@ def get_batch_generator(word2id, id2word, char2id, context_path, qn_path, ans_pa
 
     while True:
         if len(batches) == 0: # add more batches
-            refill_batches(batches, word2id, char2id, context_file, qn_file, ans_file, batch_size, context_len, question_len, word_len, discard_long)
+            refill_batches(batches, word2id, context_file, qn_file, ans_file, batch_size, context_len, question_len, word_len, discard_long)
         if len(batches) == 0:
             break
 

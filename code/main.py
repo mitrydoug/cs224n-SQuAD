@@ -28,6 +28,7 @@ import tensorflow as tf
 from qa_model import QAModel
 from vocab import get_glove
 from official_eval_helper import get_json_data, generate_answers
+from char_embeds import get_char_embeddings
 
 
 logging.basicConfig(level=logging.INFO)
@@ -54,7 +55,10 @@ tf.app.flags.DEFINE_integer("postatt_start_hidden_size", 200, "Size of the post-
 tf.app.flags.DEFINE_integer("postatt_end_hidden_size", 200, "Size of the post-attension layer hidden states for end prediction")
 tf.app.flags.DEFINE_integer("context_len", 600, "The maximum context length of your model")
 tf.app.flags.DEFINE_integer("question_len", 30, "The maximum question length of your model")
+tf.app.flags.DEFINE_integer("word_len", 25, "The maximum word length of your model")
 tf.app.flags.DEFINE_integer("embedding_size", 100, "Size of the pretrained word vectors. This needs to be one of the available GloVe dimensions: 50/100/200/300")
+tf.app.flags.DEFINE_integer("char_embedding_size", 20, "Size of the untrained character embeddings.")
+
 
 # How often to print, save, eval
 tf.app.flags.DEFINE_integer("print_every", 1, "How many iterations to do per print.")
@@ -141,6 +145,9 @@ def main(unused_argv):
     # Load embedding matrix and vocab mappings
     emb_matrix, word2id, id2word = get_glove(FLAGS.glove_path, FLAGS.embedding_size, vocab_size)
 
+    # Load character embedding matrix and char mappings
+    char_emb_matrix, char2id, id2char = get_char_embeddings(FLAGS.char_embedding_size)
+
     # Get filepaths to train/dev datafiles for tokenized queries, contexts and answers
     train_context_path = os.path.join(FLAGS.data_dir, "train.context")
     train_qn_path = os.path.join(FLAGS.data_dir, "train.question")
@@ -150,7 +157,7 @@ def main(unused_argv):
     dev_ans_path = os.path.join(FLAGS.data_dir, "dev.span")
 
     # Initialize model
-    qa_model = QAModel(FLAGS, id2word, word2id, emb_matrix, train_ans_path)
+    qa_model = QAModel(FLAGS, id2word, word2id, emb_matrix, id2char, char2id, char_emb_matrix, train_ans_path)
 
     # Some GPU settings
     config=tf.ConfigProto()

@@ -39,7 +39,7 @@ logging.basicConfig(level=logging.INFO)
 class QAModel(object):
     """Top-level Question Answering module"""
 
-    def __init__(self, FLAGS, id2word, word2id, emb_matrix, train_ans_path):
+    def __init__(self, FLAGS, id2word, word2id, emb_matrix, id2char, char2id, char_emb_matrix, train_ans_path):
         """
         Initializes the QA model.
 
@@ -54,6 +54,10 @@ class QAModel(object):
         self.id2word = id2word
         self.word2id = word2id
         self.raw_embeddings = emb_matrix
+
+        self.id2char = id2char
+        self.char2id = char2id
+        self.raw_char_embeddings = char_emb_matrix
 
         with open(train_ans_path, 'r') as f:
             self.train_ans_len_dist = collections.Counter(
@@ -95,8 +99,14 @@ class QAModel(object):
         # allows you to run the same model with variable batch_size
         self.context_ids = tf.placeholder(tf.int32, shape=[None, self.FLAGS.context_len])
         self.context_mask = tf.placeholder(tf.int32, shape=[None, self.FLAGS.context_len])
+        self.context_char_ids = tf.placeholder(tf.int32, shape=[None, self.FLAGS.context_len, self.FLAGS.word_len])
+        self.context_char_mask = tf.placeholder(tf.int32, shape=[None, self.FLAGS.context_len, self.FLAGS.word_len])
+
         self.qn_ids = tf.placeholder(tf.int32, shape=[None, self.FLAGS.question_len])
         self.qn_mask = tf.placeholder(tf.int32, shape=[None, self.FLAGS.question_len])
+        self.qn_char_ids = tf.placeholder(tf.int_32, shape=[None, self.FLAGS.question_len, self.FLAGS.word_len])
+        self.qn_char_mask = tf.placeholder(tf.int_32, shape=[None, self.FLAGS.question_len, self.FLAGS.word_len])
+
         self.ans_span = tf.placeholder(tf.int32, shape=[None, 2])
 
         # Add a placeholder to feed in the keep probability (for dropout).
@@ -124,6 +134,9 @@ class QAModel(object):
             self.context_embs = embedding_ops.embedding_lookup(self.embedding_matrix, self.context_ids) # shape (batch_size, context_len, embedding_size)
             self.qn_embs = embedding_ops.embedding_lookup(self.embedding_matrix, self.qn_ids) # shape (batch_size, question_len, embedding_size)
 
+            self.char_embs = tf.Variable(self.raw_char_embeddings, trainable=True)
+            self.context_char_embs = embedding_ops.embedding_lookup(self.char_embs, self.context_char_ids)
+            self.qn_char_embs = embedding_ops.embedding_lookup(self.char_embs, self.qn_char_ids)
 
     def build_graph(self):
         """Builds the main part of the graph for the model, starting from the input embeddings to the final distributions for the answer span.
@@ -135,6 +148,37 @@ class QAModel(object):
           self.probdist_start, self.probdist_end: Both shape (batch_size, context_len). Each row sums to 1.
             These are the result of taking (masked) softmax of logits_start and logits_end.
         """
+
+        # For the purposes of this convolutional neural net, we're treating the input as two-dimensional, like an image,
+        # where ({context/question}_len, word_len) corresponds to (height, width). Likewise, features in character
+        # embeddings correspond to image channels (e.g. RGB values for each pixel). We perform convolutions one word
+        # at a time, over window_size letters at a time. Output is fed into a max-pooling layer that takes the max
+        # for each channel over all letters in a word. The resulting representation for each word are concatenated to
+        # the existing Glove word vectors. Modeled on http://proceedings.mlr.press/v32/santos14.pdf.
+
+        with vs.variable_scope("CNN"):
+            kernel_size = (1, 5) # (num_words, window_size)
+            num_output_states = 100
+            pool_size = (1, self.FLAGS.word_len)
+
+            # context_cnn_output has shape (batch_size, context_len, word_len, char_embedding_size)
+            context_cnn_output = tf.layers.conv2d(self.context_char_embs, num_output_states, kernel_size,
+                                                  padding='same',
+                                                  kernel_initializer=tf.contrib.layers.xavier_initializer())
+            # context_max_pool has shape (batch_size, context_len, 1, char_embedding_size)
+            context_max_pool = tf.layers.max_pooling2d(context_cnn_output, pool_size, strides=1, padding='valid')
+            context_char_embs = tf.squeeze(context_max_pool)  # (batch_size, context_len, char_embedding_size)
+            self.context_embs = tf.concat([self.context_embs, context_char_embs], axis=2)  # (batch_size, context_len, embedding_size + char_embedding_size)
+
+            # question_cnn_output has shape (batch_size, question_len, word_len, char_embedding_size)
+            question_cnn_output = tf.layers.conv2d(self.qn_char_embs, num_output_states, kernel_size, padding='same',
+                                                   kernel_initializer=tf.contrib.layers.xavier_initializer())
+            # question_max_pool has shape (batch_size, question_len, 1, char_embedding_size)
+            question_max_pool = tf.layers.max_pooling2d(question_cnn_output, pool_size, strides=1, padding='valid')
+
+            question_char_embs = tf.squeeze(question_max_pool)  # (batch_size, question_len, char_embedding_size)
+            self.qn_embs = tf.concat([self.context_embs, context_char_embs], axis=2)  # (batch_size, context_len, embedding_size + char_embedding_size)
+
 
         # Use a RNN to get hidden states for the context and the question
         # Note: here the RNNEncoder is shared (i.e. the weights are the same)

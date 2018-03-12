@@ -299,7 +299,7 @@ class BiDAFAttn(object):
             #Make similarity matrix
             ws = tf.get_variable('ws', shape=(self.word_vec_size), initializer=tf.contrib.layers.xavier_initializer())
             ws_odot_context = tf.multiply(context, ws) # (batch_size, context_size, word_vec_size)
-            similarity_mult = tf.matmul(context, tf.transpose(query, perm=(0,2,1))) # (batch_size, context_size, query_size)
+            similarity_mult = tf.matmul(ws_odot_context, tf.transpose(query, perm=(0,2,1))) # (batch_size, context_size, query_size)
             
             similarity_context = tf.contrib.layers.fully_connected(context,
                     num_outputs=1,activation_fn=None, biases_initializer=None) # (batch_size, context_size, 1)

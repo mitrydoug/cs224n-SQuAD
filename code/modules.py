@@ -14,6 +14,8 @@
 
 """This file contains some basic model components"""
 
+import collections
+
 import tensorflow as tf
 from tensorflow.python.ops.rnn_cell import DropoutWrapper
 from tensorflow.python.ops import variable_scope as vs
@@ -270,7 +272,7 @@ class DoublyBasicAttn(object):
           context_vec_size: size of the context vectors. int
           query_vec_size: size of the query vectors. int
         """
-        self.hidden_size = hidden_size
+        self.hidden_size
         self.keep_prob = keep_prob
 
     def apply_attn(self, context_hiddens, query_hiddens, context_mask, query_mask,
@@ -333,6 +335,92 @@ class DoublyBasicAttn(object):
             # output = tf.nn.dropout(output, self.keep_prob)
 
             return None, output
+
+class MultiBilinearAttn(object):
+    """Module for doubly basic attention.
+    """
+
+    def __init__(self, keep_prob):
+        """
+        Inputs:
+          keep_prob: tensor containing a single scalar that is the keep probability (for dropout)
+          context_vec_size: size of the context vectors. int
+          query_vec_size: size of the query vectors. int
+        """
+        self.keep_prob = keep_prob
+
+    def apply_attn(self, layer_size, context_hiddens, query_hiddens, context_mask, query_mask,
+                   compute_context_attn=True):
+
+            context_hiddens_bl = tf.contrib.layers.fully_connected(context_hiddens, num_outputs=2*layer_size,
+                    activation_fn=None)
+            # Calculate attention distribution
+            # (batch_size, query_vec_dim, query_len)
+            query_hiddens_t = tf.transpose(query_hiddens, perm=[0, 2, 1])
+            # shape (batch_size, context_len, query_len)
+            attn_logits = tf.matmul(context_hiddens_bl, query_hiddens_t)
+            # shape (batch_size, 1, query_len)
+            query_logits_mask = tf.expand_dims(query_mask, 1)
+            # shape (batch_size, context_len, query_len). take softmax over query
+            _, query_dist   = masked_softmax(attn_logits, query_logits_mask, 2)
+
+            # Use query_dist to take weighted sum of query vectors
+            # shape (batch_size, context_len, query_vec_dim)
+            query_attn = tf.matmul(query_dist, query_hiddens)
+
+            if compute_context_attn:
+                # shape (batch_size, context_len, 1)
+                context_logits_mask = tf.expand_dims(context_mask, 2)
+                # shape (batch_size, query_len, context_len). take softmax over context
+                _, context_dist = masked_softmax(attn_logits, context_logits_mask, 1)
+                context_dist = tf.transpose(context_dist, perm=[0, 2, 1])
+
+                # Use context_dist to take weighted sum of context vectors
+                # shape (batch_size, query_len, context_vec_dim)
+                context_attn = tf.matmul(context_dist, context_hiddens)
+            else:
+                context_attn = None
+
+            return query_attn, context_attn
+
+    def build_graph(self, context_hiddens, query_hiddens, context_mask, query_mask,
+            num_layers, return_hiddens, layer_sizes):
+        """
+        """
+
+        if not isinstance(layer_sizes, collections.Iterable):
+            layer_sizes = [layer_sizes] * num_layers
+        assert len(layer_sizes) == num_layers
+
+        context_vecs = [context_hiddens]
+        query_vecs = [query_hiddens]
+
+        for i, layer_size in enumerate(layer_sizes):
+            last_layer = i+1 == len(layer_sizes)
+
+            with vs.variable_scope("MultiBilinearAttn_Layer{}".format(i)):
+
+                with vs.variable_scope("ContextAttnLSTM"):
+                    context_attn_encoder = LSTMEncoder(layer_size, self.keep_prob)
+                    context_enc = context_attn_encoder.build_graph(context_vecs[-1], context_mask)
+
+                with vs.variable_scope("QueryAttnLSTM"):
+                    query_attn_encoder = LSTMEncoder(layer_size, self.keep_prob)
+                    query_enc = query_attn_encoder.build_graph(query_vecs[-1], query_mask)
+
+                query_attn, context_attn = self.apply_attn(layer_size,
+                        context_enc, query_enc, context_mask, query_mask,
+                        (not last_layer))
+
+                context_vecs.append(tf.concat([context_enc, query_attn], axis=2))
+                if not last_layer:
+                    query_vecs.append(tf.concat([query_enc, context_attn], axis=2))
+
+        # Apply dropout
+        # output = tf.nn.dropout(output, self.keep_prob)
+
+        return tuple(context_vecs[idx] for idx in return_hiddens)
+
 
 class BiDAFAttn(object):
     """

@@ -31,7 +31,7 @@ from tensorflow.python.ops import embedding_ops
 from evaluate import exact_match_score, f1_score
 from data_batcher import get_batch_generator
 from pretty_print import print_example
-from modules import RNNEncoder, SimpleSoftmaxLayer, DoublyBasicAttn, LSTMEncoder, DenseAndSoftmaxLayer
+from modules import RNNEncoder, SimpleSoftmaxLayer, MultiBilinearAttn, LSTMEncoder, DenseAndSoftmaxLayer
 
 logging.basicConfig(level=logging.INFO)
 
@@ -136,50 +136,21 @@ class QAModel(object):
             These are the result of taking (masked) softmax of logits_start and logits_end.
         """
 
-        # Use a RNN to get hidden states for the context and the question
-        # Note: here the RNNEncoder is shared (i.e. the weights are the same)
-        # between the context and the question.
-        with vs.variable_scope("Context"):
-            encoder = LSTMEncoder(self.FLAGS.preatt_hidden_size, self.keep_prob)
-            # (batch_size, context_len, context_hidden_size*2)
-            context_hiddens = encoder.build_graph(self.context_embs, self.context_mask)
-            # (batch_size, question_len, preatt_hidden_size*2)
-            question_hiddens = encoder.build_graph(self.qn_embs, self.qn_mask)
-
-        # Use context hidden states to attend to question hidden states
-        attn_layer = DoublyBasicAttn(self.FLAGS.att_hidden_size, self.keep_prob)
-        # attn_output is shape (batch_size, context_len, 6*preatt_hidden_size)
-        _, attn_output = attn_layer.build_graph(
-                context_hiddens, question_hiddens, self.context_mask, self.qn_mask)
-
-        # Concat attn_output to context_hiddens to get blended_reps
-        # (batch_size, context_len, preatt_hidden_size*8)
-        blended_reps = tf.concat([context_hiddens, attn_output], axis=2)
-
-        with vs.variable_scope("ModelStart1"):
-            model_start_encoder1 = LSTMEncoder(self.FLAGS.postatt_start_hidden_size, self.keep_prob)
-            model_start_reps = model_start_encoder1.build_graph(blended_reps, self.context_mask)
-
-        #with vs.variable_scope("ModelStart2"):
-        #    model_start_encoder2 = LSTMEncoder(self.FLAGS.postatt_start_hidden_size, self.keep_prob)
-        #    model_start_reps = model_start_encoder2.build_graph(model_start_reps_0, self.context_mask)
-
-        with vs.variable_scope("ModelEnd"):
-            model_end_encoder = LSTMEncoder(self.FLAGS.postatt_end_hidden_size, self.keep_prob)
-            model_end_reps = model_end_encoder.build_graph(model_start_reps, self.context_mask)
+        attn_layer = MultiBilinearAttn(self.keep_prob)
+        model_start_reps, model_end_reps = attn_layer.build_graph(
+                self.context_embs, self.qn_embs, self.context_mask, self.qn_mask,
+                num_layers=5, return_hiddens=[3,4], layer_sizes=self.FLAGS.att_hidden_size)
 
         # Use softmax layer to compute probability distribution for start location
         # Note this produces self.logits_start and self.probdist_start, both of which have shape (batch_size, context_len)
         with vs.variable_scope("StartDist"):
             #(batch_size, context_len, preatt_hidden_size*8 + 2*postatt_start_hidden_size)
-            model_start_reps = tf.concat([blended_reps, model_start_reps], axis=2)
             softmax_layer_start = DenseAndSoftmaxLayer(self.keep_prob)
             self.logits_start, self.probdist_start = softmax_layer_start.build_graph(model_start_reps, self.context_mask)
 
         # Use softmax layer to compute probability distribution for end location
         # Note this produces self.logits_end and self.probdist_end, both of which have shape (batch_size, context_len)
         with vs.variable_scope("EndDist"):
-            model_end_reps = tf.concat([blended_reps, model_end_reps], axis=2)
             softmax_layer_end = DenseAndSoftmaxLayer(self.keep_prob)
             self.logits_end, self.probdist_end = softmax_layer_end.build_graph(model_end_reps, self.context_mask)
 

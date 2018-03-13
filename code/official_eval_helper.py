@@ -267,14 +267,16 @@ def generate_answers(session, model, word2id, qn_uuid_data, context_token_data, 
             # Predicted answer tokens
             pred_ans_tokens = context_tokens[pred_start : pred_end +1] # list of strings
 
+
             # Detokenize and add to dict
             uuid = batch.uuids[ex_idx]
             ans = detokenizer.detokenize(pred_ans_tokens, return_str=True)
+            pred_start = detokenizer.detokenize(context_tokens[:pred_end +1], return_str=True).rfind(ans)
             if ans[0] == u'\u2019':
                 ans = ans[1:].lstrip()
             ans = ans.replace(u'\u2019 s ', u'\u2019s ')
             ans = ans.replace(u' \u2019', u'\u2019')
-            uuid2ans[uuid] = ans
+            uuid2ans[uuid] = {'text': ans, 'pred_start': pred_start}
 
         batch_num += 1
 

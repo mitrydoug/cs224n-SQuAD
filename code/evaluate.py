@@ -63,7 +63,7 @@ def evaluate(dataset, predictions):
                     print(message, file=sys.stderr)
                     continue
                 ground_truths = list(map(lambda x: x['text'], qa['answers']))
-                prediction = predictions[qa['id']]
+                prediction = predictions[qa['id']]['text']
                 exact_match += metric_max_over_ground_truths(
                     exact_match_score, prediction, ground_truths)
                 f1 += metric_max_over_ground_truths(
@@ -73,6 +73,27 @@ def evaluate(dataset, predictions):
     f1 = 100.0 * f1 / total
 
     return {'exact_match': exact_match, 'f1': f1}
+
+def write_preds(filename, dataset, predictions):
+    incorrect_predictions = []
+    for article in dataset:
+        for paragraph in article['paragraphs']:
+            for qa in paragraph['qas']:
+                if qa['id'] not in predictions:
+                    message = 'Unanswered question ' + qa['id'] + \
+                              ' will receive score 0.'
+                    print(message, file=sys.stderr)
+                    continue
+                ground_truths = list(map(lambda x: x['text'], qa['answers']))
+                prediction = predictions[qa['id']]
+                
+		prediction = normalize_answer(prediction)
+		ground_truths = map(normalize_answer, ground_truths)
+		incorrect_prediction = (prediction, ground_truths)
+		incorrect_predictions.append(incorrect_prediction)
+    with open(filename, 'w') as the_file:
+        for pred in incorrect_predictions:
+            the_file.write(str(pred) + '\n')
 
 
 if __name__ == '__main__':

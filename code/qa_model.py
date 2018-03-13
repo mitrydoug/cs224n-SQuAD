@@ -325,6 +325,8 @@ class QAModel(object):
         input_feed[self.context_mask] = batch.context_mask
         input_feed[self.qn_ids] = batch.qn_ids
         input_feed[self.qn_mask] = batch.qn_mask
+        input_feed[self.context_char_ids] = batch.context_char_ids
+        input_feed[self.qn_char_ids] = batch.qn_char_ids
         input_feed[self.ans_span] = batch.ans_span
         input_feed[self.embedding_matrix] = self.raw_embeddings
         # note you don't supply keep_prob here, so it will default to 1 i.e. no dropout
@@ -352,6 +354,8 @@ class QAModel(object):
         input_feed[self.context_mask] = batch.context_mask
         input_feed[self.qn_ids] = batch.qn_ids
         input_feed[self.qn_mask] = batch.qn_mask
+        input_feed[self.context_char_ids] = batch.context_char_ids
+        input_feed[self.qn_char_ids] = batch.qn_char_ids
         input_feed[self.embedding_matrix] = self.raw_embeddings
         # note you don't supply keep_prob here, so it will default to 1 i.e. no dropout
 

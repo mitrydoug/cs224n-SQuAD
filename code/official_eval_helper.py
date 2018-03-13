@@ -247,6 +247,8 @@ def generate_answers(session, model, word2id, qn_uuid_data, context_token_data, 
 
     for batch in get_batch_generator(word2id, qn_uuid_data, context_token_data, qn_token_data, model.FLAGS.batch_size, model.FLAGS.context_len, model.FLAGS.question_len):
 
+        # Get distributions
+        pred_start_dist_batch, pred_end_dist_batch = model.get_prob_dists(session, batch)
         # Get the predicted spans
         pred_start_batch, pred_end_batch = model.get_start_end_pos(session, batch)
 
@@ -255,7 +257,9 @@ def generate_answers(session, model, word2id, qn_uuid_data, context_token_data, 
         pred_end_batch = pred_end_batch.tolist()
 
         # For each example in the batch:
-        for ex_idx, (pred_start, pred_end) in enumerate(zip(pred_start_batch, pred_end_batch)):
+        for ex_idx, (pred_start, pred_end, pred_start_dist, pred_end_dist) in enumerate(
+                zip(pred_start_batch, pred_end_batch,
+                    pred_start_dist_batch, pred_end_dist_batch)):
 
             # Original context tokens (no UNKs or padding) for this example
             context_tokens = batch.context_tokens[ex_idx] # list of strings
@@ -276,7 +280,9 @@ def generate_answers(session, model, word2id, qn_uuid_data, context_token_data, 
                 ans = ans[1:].lstrip()
             ans = ans.replace(u'\u2019 s ', u'\u2019s ')
             ans = ans.replace(u' \u2019', u'\u2019')
-            uuid2ans[uuid] = {'text': ans, 'pred_start': pred_start}
+            uuid2ans[uuid] = {'text': ans, 'pred_start': pred_start,
+                              'pred_start_dist': pred_start_dist.tostring(),
+                              'pred_end_dist':   pred_end_dist.tostring()}
 
         batch_num += 1
 

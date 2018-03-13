@@ -139,7 +139,7 @@ class QAModel(object):
         attn_layer = MultiBilinearAttn(self.keep_prob)
         [model_reps] = attn_layer.build_graph(
                 self.context_embs, self.qn_embs, self.context_mask, self.qn_mask,
-                num_layers=5, return_hiddens=[4], layer_sizes=self.FLAGS.att_hidden_size)
+                num_layers=5, return_hiddens=[5], layer_sizes=self.FLAGS.att_hidden_size)
 
         # Use softmax layer to compute probability distribution for start location
         # Note this produces self.logits_start and self.probdist_start, both of which have shape (batch_size, context_len)

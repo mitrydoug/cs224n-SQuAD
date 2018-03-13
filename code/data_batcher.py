@@ -84,10 +84,10 @@ def sentence_to_token_ids(sentence, word2id):
     ids = [word2id.get(w, UNK_ID) for w in tokens]
     return tokens, ids
 
-def padded_char_ids(token, char2id, max_word_len):
+def token_to_char_ids(token, char2id, max_word_len):
     """Turns a word into a list of character ids, padded to the desired length. The input token should
     already be truncated to the max_word_len, and padding is added up to max_word_len"""
-    return [char2id.get(ch, UNK_CHAR_ID) for ch in token] + [PAD_CHAR_ID] * (len(token) - max_word_len)
+    return [char2id.get(ch, UNK_CHAR_ID) for ch in token] + [PAD_CHAR_ID] * (max_word_len - len(token))
 
 
 def tokens_to_char_ids(tokens, char2id, max_word_len):
@@ -99,7 +99,7 @@ def tokens_to_char_ids(tokens, char2id, max_word_len):
     of length less than max_word_length are padded with PAD_CHAR_ID
     :return: 2D padded list of character ids, has shape ({question/context}_len, max_word_len).
     """
-    return [padded_char_ids(word[:max_word_len], char2id, max_word_len) for word in tokens]
+    return [token_to_char_ids(word[:max_word_len], char2id, max_word_len) for word in tokens]
 
 
 def padded_char_ids(batch_word_ids, id2word, char2id, max_word_len):
@@ -262,3 +262,16 @@ def get_batch_generator(word2id, id2word, char2id, context_path, qn_path, ans_pa
         yield batch
 
     return
+
+
+def test_padded_char_ids():
+    batch = [[4, 2, PAD_ID], [4, UNK_ID, 3]]
+    id2word = {4: 'up', 2: 'down', 3: 'h'}
+    char2id = {'u': 2, 'p': 3, 'd': 4, 'o': 5, 'h': 6, 'i': 7}
+    expected_output = [[[2, 3], [4, 5], [PAD_CHAR_ID, PAD_CHAR_ID]], [[2, 3], [PAD_CHAR_ID, PAD_CHAR_ID], [6, PAD_CHAR_ID]]]
+    output = padded_char_ids(batch, id2word, char2id, 2)
+    assert expected_output == output
+    print 'All tests passed!'
+
+if __name__ == '__main__':
+    test_padded_char_ids()

@@ -5,15 +5,15 @@ be trained by the model. """
 import numpy as np
 
 # Set of characters found in the dev and train sets
-char_set = set(['\x83', '\x87', '\x8b', '\x8f', '\x93', '\x97', '\x9b', '\x9f', '\xa3', '$', '\xa7', '(', '\xab', ',', '\xaf', '0', '\xb3', '4', '\xb7', '8', '\xbb', '<', '\xbf', '@', '\xc3', '\xc7', '\xcb', '\xcf', '\xd7', '\xdb', '`', '\xe3', 'd', '\xe7', 'h', '\xeb', 'l', '\xef', 'p', 't', 'x', '|', '\x80', '\x84', '\x88', '\x8c', '\x90', '\x94', '\x98', '\x9c', '\xa0', '#', '\xa4', "'", '\xa8', '+', '\xac', '/', '\xb0', '3', '\xb4', '7', '\xb8', ';', '\xbc', '?', '\xc4', '\xc8', '\xcc', '\xd0', '\xd8', '[', '\xdc', '_', '\xe0', 'c', '\xe4', 'g', '\xe8', 'k', '\xec', 'o', '\xf0', 's', 'w', '{', '\x81', '\x85', '\x89', '\x8d', '\x91', '\x95', '\x99', '\x9d', '\xa1', '"', '\xa5', '&', '\xa9', '*', '\xad', '.', '\xb1', '2', '\xb5', '6', '\xb9', ':', '\xbd', '>', '\xc5', '\xc9', '\xcd', '\xd1', '\xd5', '\xd9', '^', '\xe1', 'b', '\xe5', 'f', '\xe9', 'j', '\xed', 'n', 'r', 'v', 'z', '~', '\x82', '\x86', '\x8a', '\x8e', '\x92', '\x96', '\x9a', '\x9e', '!', '\xa2', '%', '\xa6', ')', '\xaa', '-', '\xae', '1', '\xb2', '5', '\xb6', '9', '\xba', '=', '\xbe', '\xc2', '\xc6', '\xca', '\xce', '\xd2', '\xd6', '\xda', ']', 'a', '\xe2', 'e', '\xe6', 'i', '\xea', 'm', 'q', 'u', 'y', '}'])
+all_characters = ['\x83', '\x87', '\x8b', '\x8f', '\x93', '\x97', '\x9b', '\x9f', '\xa3', '$', '\xa7', '(', '\xab', ',', '\xaf', '0', '\xb3', '4', '\xb7', '8', '\xbb', '<', '\xbf', '@', '\xc3', '\xc7', '\xcb', '\xcf', '\xd7', '\xdb', '`', '\xe3', 'd', '\xe7', 'h', '\xeb', 'l', '\xef', 'p', 't', 'x', '|', '\x80', '\x84', '\x88', '\x8c', '\x90', '\x94', '\x98', '\x9c', '\xa0', '#', '\xa4', "'", '\xa8', '+', '\xac', '/', '\xb0', '3', '\xb4', '7', '\xb8', ';', '\xbc', '?', '\xc4', '\xc8', '\xcc', '\xd0', '\xd8', '[', '\xdc', '_', '\xe0', 'c', '\xe4', 'g', '\xe8', 'k', '\xec', 'o', '\xf0', 's', 'w', '{', '\x81', '\x85', '\x89', '\x8d', '\x91', '\x95', '\x99', '\x9d', '\xa1', '"', '\xa5', '&', '\xa9', '*', '\xad', '.', '\xb1', '2', '\xb5', '6', '\xb9', ':', '\xbd', '>', '\xc5', '\xc9', '\xcd', '\xd1', '\xd5', '\xd9', '^', '\xe1', 'b', '\xe5', 'f', '\xe9', 'j', '\xed', 'n', 'r', 'v', 'z', '~', '\x82', '\x86', '\x8a', '\x8e', '\x92', '\x96', '\x9a', '\x9e', '!', '\xa2', '%', '\xa6', ')', '\xaa', '-', '\xae', '1', '\xb2', '5', '\xb6', '9', '\xba', '=', '\xbe', '\xc2', '\xc6', '\xca', '\xce', '\xd2', '\xd6', '\xda', ']', 'a', '\xe2', 'e', '\xe6', 'i', '\xea', 'm', 'q', 'u', 'y', '}']
 
-_PAD = b"<pad>"
-_UNK = b"<unk>"
-_START_CHARS = [_PAD, _UNK]
+_PADCHAR = b"<pad>"
+_UNKCHAR = b"<unk>"
+_START_CHARS = [_PADCHAR, _UNKCHAR]
 PAD_CHAR_ID = 0
 UNK_CHAR_ID = 1
 
-def get_char_embeddings(char_dim, random_init=True):
+def get_char_embeddings(char_dim, char_set=all_characters, random_init=True):
     """Returns character embeddings matrix and mappings from characters
     to character ids (i.e. index in the embedding matrix).
 
@@ -57,3 +57,38 @@ def get_char_embeddings(char_dim, random_init=True):
         idx += 1
 
     return char_emb_matrix, char2id, id2char
+
+def test_char_embeddings():
+    chars = ['a', 'b', 'c', 'd']
+    dim = 3
+    matrix, char2id, id2char = get_char_embeddings(dim, chars)
+    assert matrix.shape == (len(chars) + len(_START_CHARS), dim)
+    print char2id
+    print {
+        _PADCHAR: 0,
+        _UNKCHAR: 1,
+        'a': 2,
+        'b': 3,
+        'c': 4,
+        'd': 5
+    }
+    assert cmp(char2id, {
+        _PADCHAR: 0,
+        _UNKCHAR: 1,
+        'a': 2,
+        'b': 3,
+        'c': 4,
+        'd': 5
+    }) == 0
+    assert cmp(id2char, {
+        0: _PADCHAR,
+        1: _UNKCHAR,
+        2: 'a',
+        3: 'b',
+        4: 'c',
+        5: 'd'
+    }) == 0
+    print "All tests passed!"
+
+if __name__ == '__main__':
+    test_char_embeddings()

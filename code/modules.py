@@ -321,10 +321,9 @@ class BiDAFAttn(object):
             
             #apply beta function
             output = tf.concat([C2Q, C2Q*context, Q2C*context], axis=2)
+
+            return None, output
  
-            return None, output 
-
-
 def masked_softmax(logits, mask, dim):
     """
     Takes masked softmax over given dimension of logits.

@@ -25,6 +25,7 @@ import logging
 
 import tensorflow as tf
 
+from ensemble import ModelEnsemble
 from qa_model import QAModel
 from vocab import get_glove
 from official_eval_helper import get_json_data, generate_answers
@@ -65,6 +66,7 @@ tf.app.flags.DEFINE_integer("print_every", 1, "How many iterations to do per pri
 tf.app.flags.DEFINE_integer("save_every", 500, "How many iterations to do per save.")
 tf.app.flags.DEFINE_integer("eval_every", 500, "How many iterations to do per calculating loss/f1/em on dev set. Warning: this is fairly time-consuming so don't do it too often.")
 tf.app.flags.DEFINE_integer("keep", 1, "How many checkpoints to keep. 0 indicates keep all (you shouldn't need to do keep all though - it's very storage intensive).")
+tf.app.flags.DEFINE_integer("ensemble", 1, "How many instances of qa_model to ensemble when making predictions")
 
 # Reading and saving data
 tf.app.flags.DEFINE_string("train_dir", "", "Training directory to save the model parameters and other info. Defaults to experiments/{experiment_name}")
@@ -118,6 +120,12 @@ def main(unused_argv):
     # Print out Tensorflow version
     print "This code was developed and tested on TensorFlow 1.4.1. Your TensorFlow version: %s" % tf.__version__
 
+    # checks on use of ensemble
+    if FLAGS.ensemble <= 0:
+        raise Exception('Invalid ensemble value (<= 0)')
+    if FLAGS.ensemble > 1 and FLAGS.mode != "official_eval":
+        raise Exception("At this time, we only support ensembling multiple models for official_eval")
+
     # Define train_dir
     if not FLAGS.experiment_name and not FLAGS.train_dir and FLAGS.mode != "official_eval":
         raise Exception("You need to specify either --experiment_name or --train_dir")
@@ -156,15 +164,15 @@ def main(unused_argv):
     dev_qn_path = os.path.join(FLAGS.data_dir, "dev.question")
     dev_ans_path = os.path.join(FLAGS.data_dir, "dev.span")
 
-    # Initialize model
-    qa_model = QAModel(FLAGS, id2word, word2id, emb_matrix, id2char, char2id, char_emb_matrix, train_ans_path)
-
     # Some GPU settings
     config=tf.ConfigProto()
     config.gpu_options.allow_growth = True
 
     # Split by mode
     if FLAGS.mode == "train":
+
+        # Initialize model
+        qa_model = QAModel(FLAGS, id2word, word2id, emb_matrix, id2char, char2id, char_emb_matrix, train_ans_path)
 
         # Setup train dir and logfile
         if not os.path.exists(FLAGS.train_dir):
@@ -190,6 +198,10 @@ def main(unused_argv):
 
 
     elif FLAGS.mode == "show_examples":
+
+        # Initialize model
+        qa_model = QAModel(FLAGS, id2word, word2id, emb_matrix, id2char, char2id, char_emb_matrix, train_ans_path)
+
         with tf.Session(config=config) as sess:
 
             # Load best model
@@ -198,12 +210,20 @@ def main(unused_argv):
             # Show examples with F1/EM scores
             _, _ = qa_model.check_f1_em(sess, dev_context_path, dev_qn_path, dev_ans_path, "dev", num_samples=10, print_to_screen=True)
 
-
     elif FLAGS.mode == "official_eval":
         if FLAGS.json_in_path == "":
             raise Exception("For official_eval mode, you need to specify --json_in_path")
         if FLAGS.ckpt_load_dir == "":
             raise Exception("For official_eval mode, you need to specify --ckpt_load_dir")
+
+        # converts to a list of checkpoint directories
+        ckpt_load_dirs = FLAGS.ckpt_load_dir.split(',')
+
+        # hold list of models (for now) for convenience
+        qa_models = ([QAModel(FLAGS, id2word, word2id, emb_matrix,
+                              id2char, char2id, char_emb_matrix,
+                              train_ans_path, "en{}_".format(i))
+                        for i in range(FLAGS.ensemble)])
 
         # Read the JSON data from file
         qn_uuid_data, context_token_data, qn_token_data = get_json_data(FLAGS.json_in_path)
@@ -211,11 +231,17 @@ def main(unused_argv):
         with tf.Session(config=config) as sess:
 
             # Load model from ckpt_load_dir
-            initialize_model(sess, qa_model, FLAGS.ckpt_load_dir, expect_exists=True)
+            for qa_model, ckpt_load_dir in zip(qa_models, ckpt_load_dirs):
+                initialize_model(sess, qa_model, ckpt_load_dir, expect_exists=True)
+
+            if FLAGS.ensemble == 1:
+                [model] = qa_models
+            else:
+                model = ModelEnsemble(qa_models, FLAGS)
 
             # Get a predicted answer for each example in the data
             # Return a mapping answers_dict from uuid to answer
-            answers_dict = generate_answers(sess, qa_model, word2id, id2word, char2id, qn_uuid_data, context_token_data, qn_token_data)
+            answers_dict = generate_answers(sess, model, word2id, id2word, char2id, qn_uuid_data, context_token_data, qn_token_data)
 
             # Write the uuid->answer mapping a to json file in root dir
             print "Writing predictions to %s..." % FLAGS.json_out_path

@@ -84,17 +84,18 @@ class RNNEncoder(object):
     This code uses a bidirectional GRU, but you could experiment with other types of RNN.
     """
 
-    def __init__(self, hidden_size, keep_prob):
+    def __init__(self, hidden_size, keep_prob, special=False):
         """
         Inputs:
           hidden_size: int. Hidden size of the RNN
           keep_prob: Tensor containing a single scalar that is the keep probability (for dropout)
         """
+        cell = rnn_cell.SpecialGRUCell if special else rnn_cell.GRUCell
         self.hidden_size = hidden_size
         self.keep_prob = keep_prob
-        self.rnn_cell_fw = rnn_cell.GRUCell(self.hidden_size)
+        self.rnn_cell_fw = cell(self.hidden_size)
         self.rnn_cell_fw = DropoutWrapper(self.rnn_cell_fw, input_keep_prob=self.keep_prob)
-        self.rnn_cell_bw = rnn_cell.GRUCell(self.hidden_size)
+        self.rnn_cell_bw = cell(self.hidden_size)
         self.rnn_cell_bw = DropoutWrapper(self.rnn_cell_bw, input_keep_prob=self.keep_prob)
 
     def build_graph(self, inputs, masks):
@@ -118,6 +119,7 @@ class RNNEncoder(object):
 
             # Concatenate the forward and backward hidden states
             out = tf.concat([fw_out, bw_out], 2)
+            out = tf.contrib.layers.fully_connected(out, num_outputs=self.hidden_size)
 
             # Apply dropout
             out = tf.nn.dropout(out, self.keep_prob)
@@ -352,8 +354,7 @@ class MultiBilinearAttn(object):
     def apply_attn(self, layer_size, context_hiddens, query_hiddens, context_mask, query_mask,
                    compute_context_attn=True):
 
-            context_hiddens_bl = tf.contrib.layers.fully_connected(context_hiddens, num_outputs=2*layer_size,
-                    activation_fn=None)
+            context_hiddens_bl = context_hiddens
             # Calculate attention distribution
             # (batch_size, query_vec_dim, query_len)
             query_hiddens_t = tf.transpose(query_hiddens, perm=[0, 2, 1])
@@ -401,11 +402,11 @@ class MultiBilinearAttn(object):
             with vs.variable_scope("MultiBilinearAttn_Layer{}".format(i)):
 
                 with vs.variable_scope("ContextAttnLSTM"):
-                    context_attn_encoder = LSTMEncoder(layer_size, self.keep_prob)
+                    context_attn_encoder = RNNEncoder(layer_size, self.keep_prob, special=(i > 0))
                     context_enc = context_attn_encoder.build_graph(context_vecs[-1], context_mask)
 
                 with vs.variable_scope("QueryAttnLSTM"):
-                    query_attn_encoder = LSTMEncoder(layer_size, self.keep_prob)
+                    query_attn_encoder = RNNEncoder(layer_size, self.keep_prob, special=(i > 0))
                     query_enc = query_attn_encoder.build_graph(query_vecs[-1], query_mask)
 
                 query_attn, context_attn = self.apply_attn(layer_size,

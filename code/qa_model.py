@@ -137,22 +137,22 @@ class QAModel(object):
         """
 
         attn_layer = MultiBilinearAttn(self.keep_prob)
-        model_start_reps, model_end_reps = attn_layer.build_graph(
+        [model_reps] = attn_layer.build_graph(
                 self.context_embs, self.qn_embs, self.context_mask, self.qn_mask,
-                num_layers=5, return_hiddens=[3,4], layer_sizes=self.FLAGS.att_hidden_size)
+                num_layers=5, return_hiddens=[4], layer_sizes=self.FLAGS.att_hidden_size)
 
         # Use softmax layer to compute probability distribution for start location
         # Note this produces self.logits_start and self.probdist_start, both of which have shape (batch_size, context_len)
         with vs.variable_scope("StartDist"):
             #(batch_size, context_len, preatt_hidden_size*8 + 2*postatt_start_hidden_size)
             softmax_layer_start = DenseAndSoftmaxLayer(self.keep_prob)
-            self.logits_start, self.probdist_start = softmax_layer_start.build_graph(model_start_reps, self.context_mask)
+            self.logits_start, self.probdist_start = softmax_layer_start.build_graph(model_reps, self.context_mask)
 
         # Use softmax layer to compute probability distribution for end location
         # Note this produces self.logits_end and self.probdist_end, both of which have shape (batch_size, context_len)
         with vs.variable_scope("EndDist"):
             softmax_layer_end = DenseAndSoftmaxLayer(self.keep_prob)
-            self.logits_end, self.probdist_end = softmax_layer_end.build_graph(model_end_reps, self.context_mask)
+            self.logits_end, self.probdist_end = softmax_layer_end.build_graph(model_reps, self.context_mask)
 
 
     def add_loss(self):

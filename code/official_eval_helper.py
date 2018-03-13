@@ -19,6 +19,7 @@ and write those answers to another JSON file."""
 from __future__ import absolute_import
 from __future__ import division
 
+import base64
 import os
 from tqdm import tqdm
 import numpy as np
@@ -281,8 +282,8 @@ def generate_answers(session, model, word2id, qn_uuid_data, context_token_data, 
             ans = ans.replace(u'\u2019 s ', u'\u2019s ')
             ans = ans.replace(u' \u2019', u'\u2019')
             uuid2ans[uuid] = {'text': ans, 'pred_start': pred_start,
-                              'pred_start_dist': pred_start_dist.tostring(),
-                              'pred_end_dist':   pred_end_dist.tostring()}
+                              'pred_start_dist': base64.b64encode(pred_start_dist.tobytes()),
+                              'pred_end_dist':   base64.b64encode(pred_end_dist.tobytes())}
 
         batch_num += 1
 

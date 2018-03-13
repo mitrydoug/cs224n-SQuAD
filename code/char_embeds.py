@@ -92,3 +92,4 @@ def test_char_embeddings():
 
 if __name__ == '__main__':
     test_char_embeddings()
+    

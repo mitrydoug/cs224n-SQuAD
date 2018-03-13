@@ -103,7 +103,7 @@ class QAModel(object):
 
         self.qn_ids = tf.placeholder(tf.int32, shape=[None, self.FLAGS.question_len])
         self.qn_mask = tf.placeholder(tf.int32, shape=[None, self.FLAGS.question_len])
-        self.qn_char_ids = tf.placeholder(tf.int_32, shape=[None, self.FLAGS.question_len, self.FLAGS.word_len])
+        self.qn_char_ids = tf.placeholder(tf.int32, shape=[None, self.FLAGS.question_len, self.FLAGS.word_len])
 
         self.ans_span = tf.placeholder(tf.int32, shape=[None, 2])
 
@@ -132,7 +132,9 @@ class QAModel(object):
             self.context_embs = embedding_ops.embedding_lookup(self.embedding_matrix, self.context_ids) # shape (batch_size, context_len, embedding_size)
             self.qn_embs = embedding_ops.embedding_lookup(self.embedding_matrix, self.qn_ids) # shape (batch_size, question_len, embedding_size)
 
-            self.char_embs = tf.Variable(self.raw_char_embeddings, trainable=True)
+            char_embs_shape = self.raw_char_embeddings.shape
+            self.char_embs = tf.Variable(self.raw_char_embeddings, trainable=True, dtype=tf.float32,
+                                         expected_shape=char_embs_shape)
             self.context_char_embs = embedding_ops.embedding_lookup(self.char_embs, self.context_char_ids)
             self.qn_char_embs = embedding_ops.embedding_lookup(self.char_embs, self.qn_char_ids)
 
@@ -165,11 +167,9 @@ class QAModel(object):
                                                   kernel_initializer=tf.contrib.layers.xavier_initializer(),
                                                   name='conv',
                                                   reuse=False)  # (batch_size, context_len, word_len, char_embedding_size)
-
             context_pool = tf.layers.max_pooling2d(context_cnn_output, pool_size, strides=1,
                                                    padding='valid')  # (batch_size, context_len, 1, num_output_states)
-
-            context_char_embs = tf.squeeze(context_pool)  # (batch_size, context_len, num_output_states)
+            context_char_embs = tf.squeeze(context_pool, axis=2)  # (batch_size, context_len, num_output_states)
             self.context_embs = tf.concat([self.context_embs, context_char_embs],
                                           axis=2)  # (batch_size, context_len, embedding_size + num_output_states)
 
@@ -182,10 +182,9 @@ class QAModel(object):
             question_pool = tf.layers.max_pooling2d(question_cnn_output, pool_size, strides=1,
                                                     padding='valid')  # (batch_size, question_len, 1, num_output_states)
 
-            question_char_embs = tf.squeeze(question_pool)  # (batch_size, question_len, num_output_states)
+            question_char_embs = tf.squeeze(question_pool, axis=2)  # (batch_size, question_len, num_output_states)
             self.qn_embs = tf.concat([self.qn_embs, question_char_embs],
                                      axis=2)  # (batch_size, context_len, embedding_size + num_output_states)
-
 
         # Use a RNN to get hidden states for the context and the question
         # Note: here the RNNEncoder is shared (i.e. the weights are the same)

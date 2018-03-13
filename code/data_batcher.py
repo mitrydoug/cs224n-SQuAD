@@ -25,12 +25,14 @@ import re
 import numpy as np
 from six.moves import xrange
 from vocab import PAD_ID, UNK_ID
+from char_embeds import PAD_CHAR_ID, UNK_CHAR_ID
 
 
 class Batch(object):
     """A class to hold the information needed for a training batch"""
 
-    def __init__(self, context_ids, context_mask, context_tokens, qn_ids, qn_mask, qn_tokens, ans_span, ans_tokens, uuids=None):
+    def __init__(self, context_ids, context_mask, context_tokens, qn_ids, qn_mask, qn_tokens, qn_char_ids,
+                 context_char_ids, ans_span, ans_tokens, uuids=None):
         """
         Inputs:
           {context/qn}_ids: Numpy arrays.
@@ -49,6 +51,9 @@ class Batch(object):
         self.qn_ids = qn_ids
         self.qn_mask = qn_mask
         self.qn_tokens = qn_tokens
+
+        self.qn_char_ids = qn_char_ids
+        self.context_char_ids = context_char_ids
 
         self.ans_span = ans_span
         self.ans_tokens = ans_tokens
@@ -79,6 +84,38 @@ def sentence_to_token_ids(sentence, word2id):
     ids = [word2id.get(w, UNK_ID) for w in tokens]
     return tokens, ids
 
+def token_to_char_ids(token, char2id, max_word_len):
+    """Turns a word into a list of character ids, padded to the desired length. The input token should
+    already be truncated to the max_word_len, and padding is added up to max_word_len"""
+    return [char2id.get(ch, UNK_CHAR_ID) for ch in token] + [PAD_CHAR_ID] * (max_word_len - len(token))
+
+
+def tokens_to_char_ids(tokens, char2id, max_word_len):
+    """
+    Turns a list of tokens into a 2D list of character ids.
+    :param tokens: list of tokens, has shape ({question/context}_len)
+    :param char2id: maps characters to character ids
+    :param max_word_len: maximum word length. Tokens of length greater than max_word_len are truncated, and words
+    of length less than max_word_length are padded with PAD_CHAR_ID
+    :return: 2D padded list of character ids, has shape ({question/context}_len, max_word_len).
+    """
+    return [token_to_char_ids(word[:max_word_len], char2id, max_word_len) for word in tokens]
+
+
+def padded_char_ids(batch_word_ids, id2word, char2id, max_word_len):
+    """
+    Turns a 2D list of token ids into a 3D list of character ids
+    :param batch_word_ids: padded list of word ids of shape (batch_size, {question/context}_len)
+    :param id2word: maps word ids to words
+    :param char2id: maps characters to character ids
+    :param max_word_len: the maximum length of a word.
+    :return: 3D list containing character ids, has shape (batch_size, {question/context}_len, max_word_len). When a word
+    id is either PAD_ID or UNK_ID, it is extended into [PAD_CHAR_ID] * max_word_len
+    """
+    batch_tokens = [[id2word[word_id] if word_id not in (PAD_ID, UNK_ID) else '' for word_id in id_list] for id_list in
+                    batch_word_ids]  # Converts list of ids into list of words, replacing padding with empty string
+    return [tokens_to_char_ids(token_list, char2id, max_word_len) for token_list in batch_tokens]
+
 
 def padded(token_batch, batch_pad=0):
     """
@@ -92,8 +129,7 @@ def padded(token_batch, batch_pad=0):
     maxlen = max(map(lambda x: len(x), token_batch)) if batch_pad == 0 else batch_pad
     return map(lambda token_list: token_list + [PAD_ID] * (maxlen - len(token_list)), token_batch)
 
-
-def refill_batches(batches, word2id, context_file, qn_file, ans_file, batch_size, context_len, question_len, discard_long):
+def refill_batches(batches, word2id, context_file, qn_file, ans_file, batch_size, context_len, question_len, word_len, discard_long):
     """
     Adds more batches into the "batches" list.
 
@@ -171,7 +207,7 @@ def refill_batches(batches, word2id, context_file, qn_file, ans_file, batch_size
     return
 
 
-def get_batch_generator(word2id, context_path, qn_path, ans_path, batch_size, context_len, question_len, discard_long):
+def get_batch_generator(word2id, id2word, char2id, context_path, qn_path, ans_path, batch_size, context_len, question_len, word_len, discard_long):
     """
     This function returns a generator object that yields batches.
     The last batch in the dataset will be a partial batch.
@@ -190,7 +226,7 @@ def get_batch_generator(word2id, context_path, qn_path, ans_path, batch_size, co
 
     while True:
         if len(batches) == 0: # add more batches
-            refill_batches(batches, word2id, context_file, qn_file, ans_file, batch_size, context_len, question_len, discard_long)
+            refill_batches(batches, word2id, context_file, qn_file, ans_file, batch_size, context_len, question_len, word_len, discard_long)
         if len(batches) == 0:
             break
 
@@ -201,6 +237,10 @@ def get_batch_generator(word2id, context_path, qn_path, ans_path, batch_size, co
         qn_ids = padded(qn_ids, question_len) # pad questions to length question_len
         context_ids = padded(context_ids, context_len) # pad contexts to length context_len
 
+        # Create context_char_ids and qn_char_ids
+        qn_char_ids = padded_char_ids(qn_ids, id2word, char2id, word_len)
+        context_char_ids = padded_char_ids(context_ids, id2word, char2id, word_len)
+
         # Make qn_ids into a np array and create qn_mask
         qn_ids = np.array(qn_ids) # shape (question_len, batch_size)
         qn_mask = (qn_ids != PAD_ID).astype(np.int32) # shape (question_len, batch_size)
@@ -209,12 +249,29 @@ def get_batch_generator(word2id, context_path, qn_path, ans_path, batch_size, co
         context_ids = np.array(context_ids) # shape (context_len, batch_size)
         context_mask = (context_ids != PAD_ID).astype(np.int32) # shape (context_len, batch_size)
 
+        # Make {qn/context}_char_ids into np arrays
+        qn_char_ids = np.array(qn_char_ids)
+        context_char_ids = np.array(context_char_ids)
+
         # Make ans_span into a np array
         ans_span = np.array(ans_span) # shape (batch_size, 2)
 
         # Make into a Batch object
-        batch = Batch(context_ids, context_mask, context_tokens, qn_ids, qn_mask, qn_tokens, ans_span, ans_tokens)
+        batch = Batch(context_ids, context_mask, context_tokens, qn_ids, qn_mask, qn_tokens, qn_char_ids, context_char_ids, ans_span, ans_tokens)
 
         yield batch
 
     return
+
+
+def test_padded_char_ids():
+    batch = [[4, 2, PAD_ID], [4, UNK_ID, 3]]
+    id2word = {4: 'up', 2: 'down', 3: 'h'}
+    char2id = {'u': 2, 'p': 3, 'd': 4, 'o': 5, 'h': 6, 'i': 7}
+    expected_output = [[[2, 3], [4, 5], [PAD_CHAR_ID, PAD_CHAR_ID]], [[2, 3], [PAD_CHAR_ID, PAD_CHAR_ID], [6, PAD_CHAR_ID]]]
+    output = padded_char_ids(batch, id2word, char2id, 2)
+    assert expected_output == output
+    print 'All tests passed!'
+
+if __name__ == '__main__':
+    test_padded_char_ids()

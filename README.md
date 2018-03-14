@@ -1,3 +1,8 @@
 # Word Games (Part Deux)
 
-BiDAF + post-attention layer (modeling layer) + all LSTM
+# design changes
+BiDAF attention
+Modeling layer as in paper (1 LSTM layer hiddens to start and to 2nd LSTM for end)
+    uses concatenation of attention layer output as well
+Uses LSTMs now!
+

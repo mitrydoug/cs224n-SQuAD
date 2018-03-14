@@ -123,6 +123,45 @@ class RNNEncoder(object):
             return out
 
 
+class DenseAndSoftmaxLayer(object):
+    """
+    Module to take set of hidden states, (e.g. one for each context location),
+    and return probability distribution over those states.
+    """
+
+    def __init__(self, keep_prob):
+        self.keep_prob = keep_prob
+
+    def build_graph(self, inputs, masks):
+        """
+        Applies one dense layer for downprojection and then softmax. Uses dropout.
+
+        Inputs:
+          inputs: Tensor shape (batch_size, seq_len, hidden_size)
+          masks: Tensor shape (batch_size, seq_len)
+            Has 1s where there is real input, 0s where there's padding.
+
+        Outputs:
+          logits: Tensor shape (batch_size, seq_len)
+            logits is the result of the downprojection layer, but it has -1e30
+            (i.e. very large negative number) in the padded locations
+          prob_dist: Tensor shape (batch_size, seq_len)
+            The result of taking softmax over logits.
+            This should have 0 in the padded locations, and the rest should sum to 1.
+        """
+        with vs.variable_scope("DenseAndSoftmaxLayer"):
+            # Linear downprojection layer
+            # shape (batch_size, seq_len, 1)              
+            logits = tf.contrib.layers.fully_connected(inputs, num_outputs=1,biases_initializer=None, activation_fn=None) 
+            # shape (batch_size, seq_len)
+            logits = tf.squeeze(logits, axis=[2]) 
+            logits = tf.nn.dropout(logits, self.keep_prob)
+
+            # Take softmax over sequence
+            masked_logits, prob_dist = masked_softmax(logits, masks, 1)
+
+            return masked_logits, prob_dist
+
 class SimpleSoftmaxLayer(object):
     """
     Module to take set of hidden states, (e.g. one for each context location),
@@ -159,7 +198,6 @@ class SimpleSoftmaxLayer(object):
             masked_logits, prob_dist = masked_softmax(logits, masks, 1)
 
             return masked_logits, prob_dist
-
 
 class BasicAttn(object):
     """Module for basic attention.
@@ -261,7 +299,7 @@ class BiDAFAttn(object):
             #Make similarity matrix
             ws = tf.get_variable('ws', shape=(self.word_vec_size), initializer=tf.contrib.layers.xavier_initializer())
             ws_odot_context = tf.multiply(context, ws) # (batch_size, context_size, word_vec_size)
-            similarity_mult = tf.matmul(context, tf.transpose(query, perm=(0,2,1))) # (batch_size, context_size, query_size)
+            similarity_mult = tf.matmul(ws_odot_context, tf.transpose(query, perm=(0,2,1))) # (batch_size, context_size, query_size)
             
             similarity_context = tf.contrib.layers.fully_connected(context,
                     num_outputs=1,activation_fn=None, biases_initializer=None) # (batch_size, context_size, 1)
@@ -274,21 +312,18 @@ class BiDAFAttn(object):
             #C2Q
             _, alpha_distribution = masked_softmax(similarity_mat, tf.expand_dims(query_mask, 1), 2) # (batch_size, context_size, query_size)
             C2Q = tf.matmul(alpha_distribution, query) # (batch_size, context_size, word_vec_size)
-             
+            
             #Q2C
             max_sim = tf.reduce_max(similarity_mat, axis=2) # (batch_size, context_size)
             _, beta_distribution = masked_softmax(max_sim, context_mask, 1) # (batch_size, context_size)
             expanded_beta = tf.expand_dims(beta_distribution, axis=1) # (batch_size, 1, context_size)
             Q2C = tf.matmul(expanded_beta, context) # (batch_size, 1, word_vec_size)
-            Q2C = tf.tile(Q2C, (1, tf.shape(context)[1], 1)) #(batch_size, context_size, word_vec_size) 
             
-            #Apply dropout
-            output = tf.nn.dropout(tf.concat((C2Q, Q2C), axis=2), self.keep_prob)
-            
-            return None, output 
+            #apply beta function
+            output = tf.concat([C2Q, C2Q*context, Q2C*context], axis=2)
 
-            #TODO apply dropout to Q2C and C2Q? Or perhaps just one of them? 
-
+            return None, output
+ 
 def masked_softmax(logits, mask, dim):
     """
     Takes masked softmax over given dimension of logits.

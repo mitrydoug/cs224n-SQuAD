@@ -224,7 +224,7 @@ class QAModel(object):
 
         with vs.variable_scope("ModelEnd"):
             model_end_encoder = LSTMEncoder(self.FLAGS.postatt_end_hidden_size, self.keep_prob)
-            model_end_reps = model_end_encoder.build_graph(model_start_reps, self.context_mask)
+            model_end_reps = model_end_encoder.build_graph(blended_reps, self.context_mask)
 
         # Use softmax layer to compute probability distribution for start location
         # Note this produces self.logits_start and self.probdist_start, both of which have shape (batch_size, context_len)

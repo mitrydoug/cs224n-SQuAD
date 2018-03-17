@@ -17,7 +17,7 @@ class ModelEnsemble(object):
                 np.array([
                     np.array([range_dist[batch_num] for range_dist in range_dists])
                       .sum(axis=0).flatten()
-                for batch_num in range(batch.batch_size)])
+                for batch_num in range(batch.batch_size)]))
 
             best_ranges = np.argmax(range_prob_sums, axis=1)
             start_pos = best_ranges // self.FLAGS.context_len
@@ -30,7 +30,7 @@ class ModelEnsemble(object):
                 np.array([
                     np.array([range_dist[batch_num] for range_dist in range_dists])
                       .max(axis=0).flatten()
-                for batch_num in range(batch.batch_size)])
+                for batch_num in range(batch.batch_size)]))
 
             best_ranges = np.argmax(range_prob_sums, axis=1)
             start_pos = best_ranges // self.FLAGS.context_len

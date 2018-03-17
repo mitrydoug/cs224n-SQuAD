@@ -373,7 +373,7 @@ class QAModel(object):
         return probdist_start, probdist_end
 
 
-    def get_start_end_pos(self, session, batch):
+    def get_start_end_pos(self, session, batch, return_range_probs=False):
         """
         Run forward-pass only; get the most likely answer span.
 
@@ -405,6 +405,8 @@ class QAModel(object):
                 for s in range(self.FLAGS.context_len)])
         range_dist = np.array([(np.outer(S, E) * ans_len_dist).flatten()
                 for S, E in zip(start_dist, end_dist)])
+        if return_range_probs:
+            return range_dist
         locations = np.argmax(range_dist, axis=1)
         start_pos = locations // self.FLAGS.context_len
         end_pos = locations % self.FLAGS.context_len

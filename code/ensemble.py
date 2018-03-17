@@ -9,24 +9,32 @@ class ModelEnsemble(object):
         self.method = method
 
     def get_start_end_pos(self, session, batch):
-        if self.method == 'max_range_prob_sum': 
-            start_dists, end_dists = zip(*
-                    [qa_model.get_prob_dists(session, batch)
-                        for qa_model in self.qa_models])
+        if self.method == 'max_range_prob_sum':
+            range_dists = ([qa_model.get_start_end_pos(session, batch, return_range_probs=True)
+                            for qa_model in self.qa_models])
 
             range_prob_sums = (
                 np.array([
-                    np.array([
-                        np.triu(np.outer(start_dist[batch_num], end_dist[batch_num]))
-                            for start_dist, end_dist in zip(start_dists, end_dists)
-                    ]).sum(axis=0).flatten()
-                    for batch_num in range(batch.batch_size)]))
+                    np.array([range_dist[batch_num] for range_dist in range_dists])
+                      .sum(axis=0).flatten()
+                for batch_num in range(batch.batch_size)])
 
             best_ranges = np.argmax(range_prob_sums, axis=1)
             start_pos = best_ranges // self.FLAGS.context_len
             end_pos = best_ranges % self.FLAGS.context_len
-        else:
-            raise Exception('Unsupported method: {}'.format(self.method))
+        elif self.method == 'max_range_prob':
+            range_dists = ([qa_model.get_start_end_pos(session, batch, return_range_probs=True)
+                            for qa_model in self.qa_models])
+
+            range_prob_sums = (
+                np.array([
+                    np.array([range_dist[batch_num] for range_dist in range_dists])
+                      .max(axis=0).flatten()
+                for batch_num in range(batch.batch_size)])
+
+            best_ranges = np.argmax(range_prob_sums, axis=1)
+            start_pos = best_ranges // self.FLAGS.context_len
+            end_pos = best_ranges % self.FLAGS.context_len
         return start_pos, end_pos
 
 def test_ensemble():
